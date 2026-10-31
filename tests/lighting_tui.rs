@@ -331,3 +331,39 @@ fn bright_preview_keycaps_keep_dark_readable_legends() {
     let cell = &t.backend().buffer()[(r.x + 1, r.y + 1)];
     assert!(matches!(cell.fg,Color::Rgb(red,green,blue) if red<60 && green<60 && blue<60));
 }
+#[test]
+fn common_footer_separator_is_unbroken_in_both_workspaces() {
+    for (w, h) in [(80, 24), (120, 34), (161, 51)] {
+        for lighting in [false, true] {
+            let mut s = state();
+            s.lighting_workspace = lighting;
+            let mut t = Terminal::new(TestBackend::new(w, h)).unwrap();
+            t.draw(|f| draw(f, &s)).unwrap();
+            let a = air01::tui::theme::workspace(Rect::new(0, 0, w, h));
+            for x in a.x + 1..a.right() - 1 {
+                assert_eq!(
+                    t.backend().buffer()[(x, a.bottom() - 4)].symbol(),
+                    "─",
+                    "footer overwritten at{x}, size{w}x{h}, lighting={lighting}"
+                );
+            }
+        }
+    }
+}
+#[test]
+fn clicking_disabled_action_keeps_the_existing_focus() {
+    let mut s = state();
+    press(&mut s, KeyCode::Char('2'));
+    let g = air01::tui::lighting::LightLayout::new(Rect::new(0, 0, 80, 24));
+    let (_, r) = g.controls.iter().find(|(f, _)| *f == 11).unwrap();
+    s.handle_mouse(
+        MouseEvent {
+            kind: MouseEventKind::Down(MouseButton::Left),
+            column: r.x,
+            row: r.y,
+            modifiers: KeyModifiers::NONE,
+        },
+        Rect::new(0, 0, 80, 24),
+    );
+    assert_eq!(s.lighting.as_ref().unwrap().focus, 0);
+}

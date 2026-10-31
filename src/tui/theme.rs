@@ -6,6 +6,7 @@ use ratatui::{
 pub const BG: Color = Color::Reset;
 pub const PANEL: Color = BG;
 pub const TEXT: Color = Color::Reset;
+pub const KEY_TEXT: Color = Color::Rgb(213, 214, 219);
 pub const DIM: Color = Color::Rgb(145, 150, 175);
 pub const ACCENT: Color = Color::Rgb(125, 207, 255);
 pub const SELECTED: Color = Color::Rgb(48, 62, 85);
@@ -38,7 +39,7 @@ pub fn divider(f: &mut Frame, a: Rect, y: u16) {
         );
     }
 }
-pub fn shell(f: &mut Frame, status: &str) {
+pub fn shell(f: &mut Frame, status: &str, context: &str) {
     let a = workspace(f.area());
     f.render_widget(
         Block::bordered()
@@ -52,8 +53,8 @@ pub fn shell(f: &mut Frame, status: &str) {
                     .style(Style::default().fg(DIM)),
             )
             .title_bottom(
-                Line::from(" ? help · q quit ")
-                    .alignment(Alignment::Right)
+                Line::from(format!(" {context} · ? help · q quit "))
+                    .alignment(Alignment::Center)
                     .style(Style::default().fg(DIM)),
             ),
         a,

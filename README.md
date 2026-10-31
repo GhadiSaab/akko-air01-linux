@@ -133,8 +133,9 @@ air01 tui
 The TUI draws the real **84-key Air 01**, with staggered rows, wide modifiers,
 spacebar and arrow keys. It fits 80×24 and centers a bounded keyboard
 inside a workspace up to 112×36, leaving space around it on larger terminals.
-A neutral light canvas, white surfaces and blue selection/action accents keep
-controls visually distinct. Remapped keys are amber. Initial USB reading takes
+A terminal-native background, one shared frame, section separators and a single
+focused-control highlight keep both workspaces consistent. Flat, spaced keycaps
+avoid overlapping box borders; the contextual footer keeps shortcuts discoverable. Remapped keys are amber. Initial USB reading takes
 about 12 seconds, with a progress screen while profiles and lighting are read.
 
 - **Click a key** to open its searchable assignment picker. Type to filter,
@@ -178,7 +179,8 @@ per-key color arrangement is controlled by firmware.
   **x Hex color** accepts `#RRGGBB` (Ctrl+U clears the input).
 - Use the effect arrows and Multicolor toggle. Static ignores animation speed;
   Spectrum always uses changing colors. Selecting a custom color exits Spectrum.
-- Tab / Shift+Tab moves focus through every control; ←→ adjusts values and
+- Tab / Shift+Tab follows visual control order and skips unavailable actions
+  (including animation speed for Static); ←→ adjusts values and
   Enter activates the focused control. Presets and edits only change the draft.
 - **a Apply to keyboard** saves an exact lighting backup, writes once and verifies readback.
   **u Undo** restores the previous applied setup, with the same verification.
@@ -234,3 +236,8 @@ snapshot remains available for recovery.
 
 See [protocol notes](docs/PROTOCOL.md) and [attribution](NOTICE). Licensed under
 [GPL-3.0-or-later](LICENSE). No repository has been published by this setup.
+
+UI layout references: [Yazi](https://github.com/sxyazi/yazi) and
+[Lazygit](https://github.com/jesseduffield/lazygit). The app uses a shared shell,
+section separators, one focus indicator and contextual shortcuts. No launcher,
+compositor or terminal-window settings are changed by the UI.

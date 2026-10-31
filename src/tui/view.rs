@@ -21,7 +21,6 @@ pub struct UiLayout {
     pub buttons: Vec<(UiButton, Rect)>,
     board: Rect,
     detail: Rect,
-    footer: Rect,
 }
 impl UiLayout {
     pub fn new(area: Rect) -> Self {
@@ -36,7 +35,7 @@ impl UiLayout {
             board.x,
             board.bottom(),
             board.width,
-            footer.y.saturating_sub(board.bottom()),
+            footer.y.saturating_sub(1).saturating_sub(board.bottom()),
         );
         let profile_tabs = (0..4)
             .map(|p| {
@@ -53,13 +52,10 @@ impl UiLayout {
         ];
         let activate = Rect::new(area.right().saturating_sub(13), area.y + 2, 12, 1);
         let buttons = vec![
-            (UiButton::Backup, Rect::new(area.x + 2, footer.y + 1, 10, 1)),
-            (
-                UiButton::Restore,
-                Rect::new(area.x + 12, footer.y + 1, 11, 1),
-            ),
-            (UiButton::Swap, Rect::new(area.x + 25, footer.y + 1, 14, 1)),
-            (UiButton::Quit, Rect::new(area.x + 41, footer.y + 1, 10, 1)),
+            (UiButton::Backup, Rect::new(area.x + 2, footer.y, 10, 1)),
+            (UiButton::Restore, Rect::new(area.x + 12, footer.y, 11, 1)),
+            (UiButton::Swap, Rect::new(area.x + 25, footer.y, 14, 1)),
+            (UiButton::Quit, Rect::new(area.x + 41, footer.y, 10, 1)),
         ];
         Self {
             keyboard,
@@ -70,7 +66,6 @@ impl UiLayout {
             buttons,
             board,
             detail,
-            footer,
         }
     }
 }
@@ -195,6 +190,7 @@ pub fn draw(f: &mut Frame, s: &UiState) {
             "active: {} · viewing: {} · USB",
             s.snapshot.active_profile, s.selected_profile
         ),
+        "Arrows move · Enter edit · Tab layer",
     );
     workspace_nav(f, s);
     let g = UiLayout::new(area);
@@ -268,7 +264,11 @@ pub fn draw(f: &mut Frame, s: &UiState) {
                 Line::from(Span::styled(
                     legend,
                     Style::default()
-                        .fg(if selected { MINT } else { TEXT })
+                        .fg(if selected {
+                            MINT
+                        } else {
+                            super::theme::KEY_TEXT
+                        })
                         .bold(),
                 )),
                 Line::from(Span::styled(
@@ -291,7 +291,7 @@ pub fn draw(f: &mut Frame, s: &UiState) {
                         } else if changed {
                             GOLD
                         } else {
-                            TEXT
+                            super::theme::KEY_TEXT
                         })
                         .bold(),
                 ),
@@ -316,28 +316,21 @@ pub fn draw(f: &mut Frame, s: &UiState) {
     } else {
         action_label(a)
     };
-    let text = vec![
-        Line::from(vec![
-            Span::styled(format!(" {name} "), Style::default().fg(MINT).bold()),
-            Span::raw(format!("→ {current}    ")),
-            Span::styled(
-                format!(
-                    "profile {} · {} · slot {}",
-                    s.selected_profile, s.layer, s.selected_slot
-                ),
-                Style::default().fg(DIM),
+    let text = vec![Line::from(vec![
+        Span::styled(format!(" {name} "), Style::default().fg(MINT).bold()),
+        Span::raw(format!("→ {current}    ")),
+        Span::styled(
+            format!(
+                "profile {} · {} · slot {}",
+                s.selected_profile, s.layer, s.selected_slot
             ),
-        ]),
-        Line::from(Span::styled(
-            format!(" {}", s.status),
             Style::default().fg(DIM),
-        )),
-    ];
+        ),
+    ])];
     f.render_widget(Paragraph::new(text).wrap(Wrap { trim: false }), detail);
     f.render_widget(
-        Paragraph::new("↑↓←→ move   Enter edit   PgUp/PgDn profile   Tab layer   amber = remapped")
-            .style(Style::default().fg(DIM)),
-        Rect::new(g.footer.x + 2, g.footer.y, g.footer.width - 4, 1),
+        Paragraph::new(s.status.as_str()).style(Style::default().fg(DIM)),
+        Rect::new(area.x + 2, area.bottom() - 2, area.width - 4, 1),
     );
     for (b, r) in &g.buttons {
         button(

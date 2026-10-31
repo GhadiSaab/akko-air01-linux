@@ -342,6 +342,9 @@ impl LightingUi {
         }
         for (focus, r) in &g.controls {
             if r.contains(pt) {
+                if !self.enabled(*focus) {
+                    return Intent::None;
+                }
                 self.focus = *focus;
                 if *focus == 1 {
                     self.adjust(if event.column < r.x + r.width / 2 {
@@ -377,9 +380,14 @@ impl LightLayout {
         let h = if a.height >= 32 { 14 } else { 8 };
         let preview = Rect::new(a.x + (a.width - w) / 2, a.y + 4, w, h);
         let y = preview.bottom() + 1;
-        let bottom = a.bottom() - 3;
+        let bottom = a.bottom() - 4;
         let library = Rect::new(a.x + 2, y, 20, bottom - y);
-        let presets = library.inner(Margin::new(1, 1));
+        let presets = Rect::new(
+            library.x + 1,
+            library.y + 1,
+            library.width - 2,
+            library.height - 1,
+        );
         let x = a.x + 24;
         let w = a.width - 26;
         let editor = Rect::new(x, y, w, bottom - y);
@@ -459,6 +467,7 @@ pub fn draw(f: &mut Frame, s: &UiState) {
         &s.lighting.as_ref().map_or("USB".to_string(), |l| {
             format!("USB · Profile {}", l.original.profile)
         }),
+        "Tab focus · ←→ adjust · Enter choose",
     );
     super::view::workspace_nav(f, s);
     let Some(l) = &s.lighting else {
@@ -579,11 +588,15 @@ pub fn draw(f: &mut Frame, s: &UiState) {
             Span::raw(p.name.chars().take(13).collect::<String>()),
         ]);
         f.render_widget(
-            Paragraph::new(line).style(Style::default().fg(TEXT).bg(if selected {
-                SELECTED
-            } else {
-                PANEL
-            })),
+            Paragraph::new(line).style(
+                Style::default()
+                    .fg(if selected {
+                        super::theme::KEY_TEXT
+                    } else {
+                        TEXT
+                    })
+                    .bg(if selected { SELECTED } else { PANEL }),
+            ),
             r,
         );
     }

@@ -14,10 +14,22 @@ behavior after user's correction. Retain mouse, keyboard, Custom, saved presets,
 modal hit consistency and80x24 support. Focus follows displayed control order;
 disabled controls must agree between shortcuts, mouse and Enter.
 
-- [ ] Add failing focus-order/disabled-action and shared-shell layout tests;
+- [x] Add failing focus-order/disabled-action and shared-shell layout tests;
   implement visual-order focus and enabled rules in src/tui/lighting.rs.
-- [ ] Implement shared terminal-native shell in theme.rs, unify headers/footer,
+- [x] Implement shared terminal-native shell in theme.rs, unify headers/footer,
   remove disconnected white cards/button blocks, flatten keycap styling.
   Render both workspaces at80x24,120x34 and odd large sizes; inspect.
 - [ ] Run tests/fmt/clippy, fresh review, Nix install, read-only installed PTY
   interaction smoke. Update docs/screenshots. No HID writes.
+
+## Review / rulings
+- Fresh reviewer found one Important issue: content overwrote the shared footer
+  divider. Reserved bottom-4 outside content, moved keymap status into the shared
+  status row, and added full buffer assertions for both views at80x24/120x34/161x51.
+- Restored contextual footer shortcuts and explicit readable text on fixed dark
+  keycaps, including light-default-foreground terminals. Disabled mouse actions
+  preserve the prior focus, and bright RGB previews use contrasting dark legends.
+- Ruling: do not run a second real-HID TUI while the user's existing session holds
+  the device lock. Do not terminate it or discard its draft. Verify rendering/input
+  with TestBackend, all tests, Clippy and Nix checks; installed CLI checks remain
+  hardware-free. The existing terminal lifecycle/transport is unchanged.
