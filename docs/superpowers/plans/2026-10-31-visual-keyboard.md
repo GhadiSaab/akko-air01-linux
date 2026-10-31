@@ -42,21 +42,21 @@ validation; use existing current settings and simulated transactions.
 ### Task 1: Keyboard model and spatial navigation
 
 Files: src/keyboard.rs, tests/keyboard.rs.
-- [ ] Test 84 unique positions, Fn/Ctrl/arrow/lighting locations, scaling at80x24/120x36/160x50, hit testing and geometric navigation; observe failures.
-- [ ] Implement factual layout data and pure geometry/navigation functions.
-- [ ] Run tests and commit.
+- [x] Test 84 unique positions, Fn/Ctrl/arrow/lighting locations, scaling at80x24/120x36/160x50, hit testing and geometric navigation; observe failures.
+- [x] Implement factual layout data and pure geometry/navigation functions.
+- [x] Run tests and commit.
 
 ### Task 2: Visual keyboard and direct editing
 
 Files: src/tui.rs, tests/tui.rs.
-- [ ] Test physical navigation, mouse profile/layer/key selection, assignment filtering/selection, cancellation, confirmation, minimum-size and rendered keycaps; observe failures.
-- [ ] Render keycaps, inspector, tabs, searchable picker and confirmation popups with shared hit geometry.
-- [ ] Enable/disable mouse capture with terminal guard. Route mouse/key intents through existing backup/fresh-snapshot/verified-apply path.
-- [ ] Verify tests, formatting, Clippy and a read-only PTY/rendered screenshot; commit.
+- [x] Test physical navigation, mouse profile/layer/key selection, assignment filtering/selection, cancellation, confirmation, minimum-size and rendered keycaps; observe failures.
+- [x] Render keycaps, inspector, tabs, searchable picker and confirmation popups with shared hit geometry.
+- [x] Enable/disable mouse capture with terminal guard. Route mouse/key intents through existing backup/fresh-snapshot/verified-apply path.
+- [x] Verify tests, formatting, Clippy and a read-only PTY/rendered screenshot; commit.
 
 ### Task 3: Review, package and install
 
 Files: README.md, NOTICE, tests as required.
-- [ ] Document new controls and layout evidence.
-- [ ] Request independent read-only review and fix material findings with regressions.
-- [ ] Build Nix package, install through existing user-local package link, verify installed CLI and read-only TUI; commit. No keyboard writes required.
+- [x] Document new controls and layout evidence.
+- [x] Request independent read-only review and fix material findings with regressions.
+- [x] Build Nix package, install through existing user-local package link, verify installed CLI and read-only TUI; commit. No keyboard writes required.
