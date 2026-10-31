@@ -312,7 +312,7 @@ pub fn draw(f: &mut Frame, s: &UiState) {
             ]);
             f.render_widget(Paragraph::new(text).alignment(Alignment::Center), inner);
         } else {
-            let face = if changed {
+            let face = if changed || inherited {
                 short(&action_label(a), inner.width)
             } else {
                 legend
@@ -480,12 +480,16 @@ fn draw_picker(f: &mut Frame, s: &UiState, query: &str, selected: usize) {
     let p = picker_popup(area);
     let name = keyboard::key(s.selected_slot).map_or("key", |k| k.legend);
     popup_frame(f, p, &format!(" Assign {name} "));
+    let (effective_action, inherited) = effective(s, s.selected_slot);
+    let current_label = if inherited {
+        format!("inherits {}", action_label(effective_action))
+    } else {
+        action_label(s.current_action())
+    };
     f.render_widget(
         Paragraph::new(format!(
             "Profile {} · {} · currently {}",
-            s.selected_profile,
-            s.layer,
-            action_label(s.current_action())
+            s.selected_profile, s.layer, current_label
         ))
         .style(Style::default().fg(DIM)),
         Rect::new(p.x + 2, p.y + 1, p.width - 4, 1),
@@ -497,7 +501,7 @@ fn draw_picker(f: &mut Frame, s: &UiState, query: &str, selected: usize) {
         Rect::new(p.x + 2, p.y + 3, p.width - 4, 3),
     );
     let list = picker_list(area);
-    let items = picker_items(query);
+    let items = picker_items(query, s.layer);
     let start = picker_start(selected, list.height);
     if items.is_empty() {
         f.render_widget(

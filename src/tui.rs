@@ -59,7 +59,7 @@ impl UiState {
     }
     pub fn open_picker(&mut self) {
         let action = self.current_action();
-        let selected = picker_items("")
+        let selected = picker_items("", self.layer)
             .iter()
             .position(|p| p.action == action || p.action.label() == action.label())
             .unwrap_or(0);
@@ -75,7 +75,7 @@ pub(crate) struct PickerItem {
     pub group: &'static str,
     pub action: Action,
 }
-pub(crate) fn picker_items(query: &str) -> Vec<PickerItem> {
+pub(crate) fn picker_items(query: &str, layer: Layer) -> Vec<PickerItem> {
     let mut items = vec![
         PickerItem {
             label: "Fn".into(),
@@ -83,7 +83,12 @@ pub(crate) fn picker_items(query: &str) -> Vec<PickerItem> {
             action: Action::FN,
         },
         PickerItem {
-            label: "Disabled".into(),
+            label: if layer == Layer::Base {
+                "Disabled"
+            } else {
+                "Inherit base"
+            }
+            .into(),
             group: "Keyboard",
             action: Action::DISABLED,
         },

@@ -33,7 +33,7 @@ impl UiState {
                 mut query,
                 mut selected,
             } => {
-                let count = picker_items(&query).len();
+                let count = picker_items(&query, self.layer).len();
                 match key.code {
                     KeyCode::Esc => {
                         self.mode = Mode::Browse;
@@ -44,7 +44,7 @@ impl UiState {
                         return Intent::None;
                     }
                     KeyCode::Enter => {
-                        if let Some(item) = picker_items(&query).get(selected) {
+                        if let Some(item) = picker_items(&query, self.layer).get(selected) {
                             return self.choose_assignment(item.action);
                         }
                     }
@@ -202,7 +202,7 @@ impl UiState {
                 if list.contains(point) {
                     let start = view::picker_start(selected, list.height);
                     let index = start + (event.row - list.y) as usize;
-                    if let Some(item) = picker_items(&query).get(index) {
+                    if let Some(item) = picker_items(&query, self.layer).get(index) {
                         return self.choose_assignment(item.action);
                     }
                 }

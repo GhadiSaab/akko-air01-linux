@@ -199,3 +199,35 @@ fn picker_and_confirmation_mouse_actions_use_their_visible_rows() {
     s.confirm("Change one key".into());
     assert_eq!(s.handle_mouse(click(84, 19), area), Intent::Confirm(false));
 }
+#[test]
+fn fn_layer_picker_offers_inheritance_instead_of_claiming_to_disable() {
+    let mut s = state();
+    s.layer = Layer::FnWin;
+    s.open_picker();
+    for c in "inherit".chars() {
+        s.handle(key(KeyCode::Char(c)));
+    }
+    assert_eq!(
+        s.handle(key(KeyCode::Enter)),
+        Intent::Remap("raw:00:00:00:00".into())
+    );
+}
+#[test]
+fn compact_fn_keycap_shows_effective_remapped_base_assignment() {
+    use ratatui::layout::Rect;
+    let mut s = state();
+    s.layer = Layer::FnWin;
+    s.snapshot.profiles[2].base[5] = air01::protocol::Action::CTRL;
+    let area = Rect::new(0, 0, 80, 24);
+    let layout = air01::tui::UiLayout::new(area);
+    let (_, r) = air01::keyboard::rectangles(layout.keyboard, false)
+        .into_iter()
+        .find(|(slot, _)| *slot == 5)
+        .unwrap();
+    let mut t = ratatui::Terminal::new(ratatui::backend::TestBackend::new(80, 24)).unwrap();
+    t.draw(|f| air01::tui::draw(f, &s)).unwrap();
+    let face = (r.x + 1..r.right() - 1)
+        .map(|x| t.backend().buffer()[(x, r.y + 1)].symbol())
+        .collect::<String>();
+    assert_eq!(face.trim(), "Ct");
+}

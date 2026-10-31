@@ -138,7 +138,9 @@ remapped keys are amber. Initial USB reading takes about 12 seconds.
 
 - **Click a key** to open its searchable assignment picker. Type to filter,
   use arrows or the mouse, and press Enter/click an assignment to preview it.
-  F2 opens advanced raw assignment input; Esc cancels.
+  F2 opens advanced raw assignment input; Esc cancels. The base layer offers
+  Disabled; Fn layers offer Inherit base, because a zero Fn entry falls through
+  to the base assignment.
 - **Arrow keys** move spatially around the keyboard. Enter / `e` opens the
   selected key's picker. Hidden matrix gaps are never navigation targets.
 - Click **profile tabs**, or use PgUp/PgDn / `[` / `]`, to preview profiles.
