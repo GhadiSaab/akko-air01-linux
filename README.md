@@ -133,7 +133,8 @@ air01 tui
 The TUI draws the real **84-key Air 01**, with staggered rows, wide modifiers,
 spacebar and arrow keys. It fits 80×24; at 100×34 or larger it shows both the
 physical legend and changed assignment on each keycap. Selected keys are mint;
-remapped keys are amber. Initial USB reading takes about 12 seconds.
+remapped keys are amber. Initial USB reading takes about 12 seconds, with a
+progress screen while profiles and lighting are read.
 
 - **Click a key** to open its searchable assignment picker. Type to filter,
   use arrows or the mouse, and press Enter/click an assignment to preview it.
@@ -158,6 +159,8 @@ have no physical key. Below 80×24, the TUI asks for a larger terminal and does
 not start edits.
 
 ### Lighting studio
+
+![Lighting studio](docs/images/lighting-studio.png)
 
 Press **2** or click **Lighting**; **1** returns to Keymap. **? / F1** opens
 Help. The lighting workspace controls the **active hardware profile**, independent
@@ -194,8 +197,7 @@ air01 lighting preset my-desk
 air01 lighting restore /absolute/path/to/lighting-backup.json
 ```
 
-Brightness and speed range from 0 to 4. Effect IDs appear in `air01 lighting
-set --help` / [protocol notes](docs/PROTOCOL.md). Lighting backups are private
+Brightness and speed range from 0 to 4. Effect IDs are listed in the [protocol notes](docs/PROTOCOL.md). Lighting backups are private
 versioned JSON in `~/.local/state/air01/lighting-backups`, saved presets in
 `~/.local/state/air01/themes` (or the equivalent under `$XDG_STATE_HOME`). They
 are separate from keymap snapshots. Restore requires the backup's profile to

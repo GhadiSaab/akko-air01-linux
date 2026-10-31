@@ -50,8 +50,8 @@ preset colors. High nibble is the effect option; Air01 Wave defaults to option2
 Effect IDs:1 Static,2 Breathing,3 Spectrum,4 Wave,5 Ripple,6 Stars,7 Snake,
 8 Reactive,9 Converge,10 Sine wave,11 Kaleidoscope,12 Line wave,14 Laser,
 15 Circle,16 Dazzle,17 Rain,18 Meteor,19 Reactive off. These mode numbers come
-from upstream protocol and vendor metadata; only Static RGB round-trip has been
-physically exercised so far on this board. Host-fed modes and per-key uploads
+from upstream protocol and vendor metadata; Static RGB, Breathing and rainbow Wave writes/readbacks have been
+exercised on this board, followed by exact original lighting restoration. Host-fed modes and per-key uploads
 are excluded. No side-light writes.
 
 Lighting transactions recheck device3013 and active profile, reject stale state,
