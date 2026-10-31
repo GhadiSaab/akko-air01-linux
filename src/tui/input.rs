@@ -28,6 +28,40 @@ impl UiState {
         if key.modifiers.contains(KeyModifiers::CONTROL) && key.code == KeyCode::Char('c') {
             return Intent::Quit;
         }
+        if matches!(self.mode, Mode::Help | Mode::Notice(_)) {
+            self.mode = Mode::Browse;
+            return Intent::None;
+        }
+        let editing_light =
+            self.is_lighting() && self.lighting.as_ref().is_some_and(|l| l.editor.is_some());
+        if matches!(self.mode, Mode::Browse) && !editing_light {
+            match key.code {
+                KeyCode::Char('1') => {
+                    self.lighting_workspace = false;
+                    return Intent::None;
+                }
+                KeyCode::Char('2') => {
+                    self.lighting_workspace = true;
+                    return Intent::None;
+                }
+                KeyCode::F(1) | KeyCode::Char('?') => {
+                    self.mode = Mode::Help;
+                    return Intent::None;
+                }
+                _ => {}
+            }
+        }
+        if matches!(self.mode, Mode::Browse) && self.is_lighting() {
+            return if let Some(l) = &mut self.lighting {
+                l.handle(key, &mut self.status)
+            } else {
+                match key.code {
+                    KeyCode::Char('r') => Intent::ReloadLighting,
+                    KeyCode::Char('q') | KeyCode::Esc => Intent::Quit,
+                    _ => Intent::None,
+                }
+            };
+        }
         match self.mode.clone() {
             Mode::Picker {
                 mut query,
@@ -119,6 +153,7 @@ impl UiState {
                 };
                 Intent::None
             }
+            Mode::Help | Mode::Notice(_) => Intent::None,
             Mode::Browse => match key.code {
                 KeyCode::Char('q') | KeyCode::Esc => Intent::Quit,
                 KeyCode::Up | KeyCode::Char('k') => {
@@ -172,6 +207,34 @@ impl UiState {
         if area.width < 80 || area.height < 24 {
             return Intent::None;
         }
+        if matches!(self.mode, Mode::Help | Mode::Notice(_)) {
+            if event.kind == MouseEventKind::Down(MouseButton::Left) {
+                self.mode = Mode::Browse;
+            }
+            return Intent::None;
+        }
+        let editing_light =
+            self.is_lighting() && self.lighting.as_ref().is_some_and(|l| l.editor.is_some());
+        if matches!(self.mode, Mode::Browse)
+            && !editing_light
+            && event.kind == MouseEventKind::Down(MouseButton::Left)
+            && event.row == area.y + 2
+        {
+            if event.column < 16 {
+                self.lighting_workspace = false;
+            } else if event.column < 34 {
+                self.lighting_workspace = true;
+            } else if event.column >= area.right() - 10 {
+                self.mode = Mode::Help;
+            }
+            return Intent::None;
+        }
+        if matches!(self.mode, Mode::Browse) && self.is_lighting() {
+            return self
+                .lighting
+                .as_mut()
+                .map_or(Intent::None, |l| l.mouse(event, area, &mut self.status));
+        }
         if matches!(self.mode, Mode::Picker { .. })
             && matches!(
                 event.kind,
@@ -220,7 +283,7 @@ impl UiState {
                     Intent::None
                 }
             }
-            Mode::Edit(_) | Mode::Restore(_) => Intent::None,
+            Mode::Help | Mode::Notice(_) | Mode::Edit(_) | Mode::Restore(_) => Intent::None,
             Mode::Browse => {
                 let layout = UiLayout::new(area);
                 for (profile, r) in &layout.profile_tabs {

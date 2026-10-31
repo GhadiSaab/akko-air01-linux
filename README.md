@@ -1,7 +1,7 @@
 # air01
 
 A native Rust CLI and terminal interface for configuring the **Akko Air 01 on
-Linux**. Inspect profiles, remap keys including Fn, and save or restore keymaps.
+Linux**. Inspect profiles, remap keys including Fn, save or restore keymaps, and configure RGB lighting with reusable presets.
 No browser, cloud account, WebKit, root GUI, or kernel module.
 
 Tested hardware: wired USB `3151:5002`, device ID **3013**, firmware `1.10`.
@@ -105,8 +105,7 @@ restored maps.
 ## Backups and recovery
 
 Mutating CLI/TUI operations automatically save a private, mode-0600 backup in
-`$XDG_STATE_HOME/air01/backups`, or `~/.local/state/air01/backups`. The path is
-printed before any writes. Explicit backup destinations are never overwritten.
+`$XDG_STATE_HOME/air01/backups`, or `~/.local/state/air01/backups`. The CLI reports the backup path; failures include its recovery location. Explicit backup destinations are never overwritten.
 
 Snapshots cover **four base keymaps and eight Windows/Mac Fn maps**, plus the
 active profile and device identity. They do **not** include macros, RGB,
@@ -157,6 +156,51 @@ remapped keys are amber. Initial USB reading takes about 12 seconds.
 Use the slot-oriented CLI for advanced inspection of storage positions that
 have no physical key. Below 80×24, the TUI asks for a larger terminal and does
 not start edits.
+
+### Lighting studio
+
+Press **2** or click **Lighting**; **1** returns to Keymap. **? / F1** opens
+Help. The lighting workspace controls the **active hardware profile**, independent
+of the profile previewed in Keymap. Its keyboard colors are a palette preview;
+animated effects run on the keyboard, not as a simulated terminal animation.
+
+- Click a preset, or use ↑↓ and Enter in the library. Eight built-ins include
+  Mint, Ember, Ocean, Rose, Amethyst, Frost, Aurora and Focus.
+- Click/drag RGB, brightness and speed bars. Click swatches for quick colors;
+  **x Hex color** accepts `#RRGGBB` (Ctrl+U clears the input).
+- Use the effect arrows and Rainbow toggle. Static ignores animation speed;
+  Spectrum always uses changing colors. Selecting a custom color exits Spectrum.
+- Tab / Shift+Tab moves focus through every control; ←→ adjusts values and
+  Enter activates the focused control. Presets and edits only change the draft.
+- **a Apply** saves an exact lighting backup, writes once and verifies readback.
+  **u Undo** restores the previous applied setup, with the same verification.
+  **r Revert** discards draft edits. **Reload** refreshes the active profile;
+  revert a changed draft first.
+- **s Save** names a reusable custom preset; it saves the draft without applying
+  it. Names allow 1–32 ASCII letters, digits, hyphens and underscores. Existing
+  names are never overwritten. Saved presets appear in the library on restart.
+
+Lighting CLI equivalents:
+
+```sh
+air01 lighting show
+air01 lighting presets
+air01 --dry-run lighting preset Aurora
+air01 lighting preset Mint
+air01 lighting set --color '#8B5CF6' --effect 2 --brightness 3 --speed 2
+air01 lighting set --rainbow --effect 4
+air01 lighting save my-desk
+air01 lighting preset my-desk
+air01 lighting restore /absolute/path/to/lighting-backup.json
+```
+
+Brightness and speed range from 0 to 4. Effect IDs appear in `air01 lighting
+set --help` / [protocol notes](docs/PROTOCOL.md). Lighting backups are private
+versioned JSON in `~/.local/state/air01/lighting-backups`, saved presets in
+`~/.local/state/air01/themes` (or the equivalent under `$XDG_STATE_HOME`). They
+are separate from keymap snapshots. Restore requires the backup's profile to
+be active; it never silently switches profiles. Global RGB/effects are supported;
+per-key painting, host-fed screen/music sync and side lighting are not included.
 
 ## Validation and development
 

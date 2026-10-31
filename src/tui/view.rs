@@ -198,6 +198,11 @@ pub fn draw(f: &mut Frame, s: &UiState) {
         );
         return;
     }
+    if s.is_lighting() {
+        super::lighting::draw(f, s);
+        return;
+    }
+    workspace_nav(f, s);
     let g = UiLayout::new(area);
     f.render_widget(
         Paragraph::new(Line::from(vec![
@@ -388,6 +393,8 @@ pub fn draw(f: &mut Frame, s: &UiState) {
     }
     match &s.mode {
         Mode::Browse => {}
+        Mode::Help => draw_help(f),
+        Mode::Notice(text) => draw_notice(f, text),
         Mode::Picker { query, selected } => draw_picker(f, s, query, *selected),
         Mode::Confirm(text) => {
             let p = confirm_popup(area);
@@ -536,5 +543,74 @@ fn draw_picker(f: &mut Frame, s: &UiState, query: &str, selected: usize) {
         Paragraph::new("Click / Enter choose   ↑↓ navigate   F2 raw   Esc cancel")
             .style(Style::default().fg(DIM)),
         Rect::new(p.x + 2, p.bottom() - 2, p.width - 4, 1),
+    );
+}
+
+pub(super) fn workspace_nav(f: &mut Frame, s: &UiState) {
+    let a = f.area();
+    button(
+        f,
+        Rect::new(a.x, a.y + 2, 15, 1),
+        "1  Keymap",
+        !s.is_lighting(),
+    );
+    button(
+        f,
+        Rect::new(a.x + 16, a.y + 2, 17, 1),
+        "2  Lighting",
+        s.is_lighting(),
+    );
+    button(
+        f,
+        Rect::new(a.right() - 10, a.y + 2, 10, 1),
+        "? Help",
+        false,
+    );
+}
+pub(super) fn draw_help(f: &mut Frame) {
+    let a = f.area();
+    let p = Rect::new(a.x + (a.width - 74) / 2, a.y + (a.height - 20) / 2, 74, 20);
+    popup_frame(f, p, " AIR01 · QUICK GUIDE ");
+    let help = "WORKSPACES
+  1 Keymap   2 Lighting   ? / F1 Help   Ctrl+C Quit
+
+KEYMAP
+  Click a key / arrows to select · Enter opens assignment search
+  Type to filter · Enter selects · y Apply / Esc Cancel
+  Profile tabs preview · a activates · Tab cycles Fn layers
+  b Backup · r Restore · s Ctrl/Fn swap
+
+LIGHTING
+  Click a preset to preview · ↑↓ browse and Enter select
+  Tab / Shift+Tab focus controls · ←→ adjust · Enter activate
+  Click or drag RGB, brightness and speed bars
+  x Hex color · Ctrl+U clear · s Save named preset
+  a Apply to active profile · u Undo last change
+  r Revert draft · Reload reads the keyboard
+
+Drafts stay on screen until Apply. Press any key or click to close.";
+    f.render_widget(
+        Paragraph::new(help)
+            .style(Style::default().fg(TEXT))
+            .wrap(Wrap { trim: false }),
+        Rect::new(p.x + 2, p.y + 1, p.width - 4, p.height - 2),
+    );
+}
+
+pub(super) fn draw_notice(f: &mut Frame, text: &str) {
+    let a = f.area();
+    let p = Rect::new(a.x + 4, a.y + (a.height - 14) / 2, a.width - 8, 14);
+    popup_frame(f, p, " OPERATION FAILED ");
+    f.render_widget(
+        Paragraph::new(text)
+            .style(Style::default().fg(GOLD))
+            .wrap(Wrap { trim: false }),
+        Rect::new(p.x + 2, p.y + 2, p.width - 4, p.height - 5),
+    );
+    button(
+        f,
+        Rect::new(p.x + 2, p.bottom() - 2, p.width - 4, 1),
+        "Enter / Esc / click to close",
+        true,
     );
 }

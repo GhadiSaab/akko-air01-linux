@@ -137,18 +137,23 @@ impl HidWire {
 impl Wire for HidWire {
     fn query(&mut self, op: u8, args: &[u8]) -> Result<[u8; 64]> {
         ensure!(
-            [0x8f, 0x89, 0x8a, 0x92, 0x84, 0x90].contains(&op),
+            [0x8f, 0x89, 0x8a, 0x92, 0x84, 0x90, 0x87].contains(&op),
             "unsupported query opcode"
         );
         decode_report(&self.exchange(packet(op, args, None)?, true)?)
     }
     fn send(&mut self, p: [u8; 65]) -> Result<()> {
         ensure!(
-            p[0] == 0 && [0x0a, 0x10, 0x04].contains(&p[1]),
+            p[0] == 0 && [0x0a, 0x10, 0x04, 0x07].contains(&p[1]),
             "unsupported write opcode or report ID"
         );
         ensure!(
-            p[1..9].iter().map(|&v| v as u16).sum::<u16>() & 255 == 255,
+            p[1..if p[1] == 7 { 10 } else { 9 }]
+                .iter()
+                .map(|&v| v as u16)
+                .sum::<u16>()
+                & 255
+                == 255,
             "invalid write checksum"
         );
         self.exchange(p, false)?;

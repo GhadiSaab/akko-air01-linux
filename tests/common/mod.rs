@@ -12,6 +12,7 @@ pub struct State {
     pub snapshot: Snapshot,
     pub device_id: u32,
     pub gen2: bool,
+    pub lighting: [u8; 7],
     pub writes: Vec<[u8; 65]>,
     pub fail_at: Option<usize>,
     pub fail_from: Option<usize>,
@@ -42,6 +43,7 @@ impl MemoryWire {
             },
             device_id: 3013,
             gen2: true,
+            lighting: [1, 4, 4, 8, 255, 0, 89],
             writes: vec![],
             fail_at: None,
             fail_from: None,
@@ -65,6 +67,10 @@ impl Wire for MemoryWire {
                 r[1..5].copy_from_slice(&s.device_id.to_le_bytes());
                 r[7] = 0x10;
                 r[8] = 1;
+            }
+            0x87 => {
+                r[0] = op;
+                r[1..8].copy_from_slice(&s.lighting);
             }
             0x89 => {
                 r[0] = op;
@@ -125,6 +131,7 @@ impl Wire for MemoryWire {
                 };
                 layer[slot] = Action(p[9..13].try_into().unwrap());
             }
+            0x07 => s.lighting = p[2..9].try_into().unwrap(),
             0x04 => s.snapshot.active_profile = p[2],
             _ => bail!("unexpected fake write {:x}", p[1]),
         }

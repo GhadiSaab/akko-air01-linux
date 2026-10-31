@@ -57,3 +57,12 @@ fn dry_run_backup_creates_no_file_and_needs_no_hardware() {
     assert!(o.status.success());
     assert!(!p.exists());
 }
+#[test]
+fn lighting_rejects_invalid_color_before_hardware() {
+    let output = std::process::Command::new(env!("CARGO_BIN_EXE_air01"))
+        .args(["lighting", "set", "--color", "invalid"])
+        .output()
+        .unwrap();
+    assert!(!output.status.success());
+    assert!(String::from_utf8_lossy(&output.stderr).contains("six hex digits"));
+}

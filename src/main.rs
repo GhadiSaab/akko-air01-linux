@@ -31,6 +31,11 @@ struct Cli {
 }
 #[derive(Subcommand)]
 enum Command {
+    /// Inspect or configure global backlight and reusable RGB presets.
+    Lighting {
+        #[command(subcommand)]
+        command: LightCommand,
+    },
     /// List vendor settings interfaces; does not write to devices.
     Devices,
     /// Open the terminal interface.
@@ -70,6 +75,151 @@ enum Command {
         #[arg(long, conflicts_with = "profile")]
         all_profiles: bool,
     },
+}
+#[derive(Subcommand)]
+enum LightCommand {
+    Show,
+    Presets,
+    Set {
+        #[arg(long, value_parser=air01::lighting::parse_color)]
+        color: Option<[u8; 3]>,
+        #[arg(long,value_parser=clap::value_parser!(u8).range(1..20))]
+        effect: Option<u8>,
+        #[arg(long,value_parser=clap::value_parser!(u8).range(0..5))]
+        brightness: Option<u8>,
+        #[arg(long,value_parser=clap::value_parser!(u8).range(0..5))]
+        speed: Option<u8>,
+        #[arg(long, conflicts_with = "color")]
+        rainbow: bool,
+    },
+    Preset {
+        name: String,
+    },
+    Save {
+        name: String,
+    },
+    Restore {
+        path: PathBuf,
+    },
+}
+fn lighting_cli(cli: &Cli, cmd: &LightCommand) -> Result<()> {
+    use air01::lighting::{self, Lighting};
+    if matches!(cmd, LightCommand::Presets) {
+        for p in lighting::library()? {
+            println!(
+                "{:<32} {} {}{}",
+                p.name,
+                p.lighting.hex(),
+                p.lighting.effect(),
+                if p.custom { " (saved)" } else { "" }
+            );
+        }
+        return Ok(());
+    }
+    let restored = if let LightCommand::Restore { path } = cmd {
+        Some(lighting::load(path)?)
+    } else {
+        None
+    };
+    let preset = if let LightCommand::Preset { name } = cmd {
+        Some(
+            lighting::library()?
+                .into_iter()
+                .find(|p| p.name.eq_ignore_ascii_case(name))
+                .context("unknown preset; use lighting presets")?
+                .lighting,
+        )
+    } else {
+        None
+    };
+    if let LightCommand::Save { name } = cmd {
+        lighting::theme_path(std::path::Path::new("."), name)?;
+    }
+    let mut b = open(cli.device.as_deref())?;
+    let before = lighting::read(&mut b)?;
+    if let Some(profile) = cli.profile {
+        anyhow::ensure!(
+            profile == before.profile,
+            "lighting controls the active profile {}; activate the desired profile first",
+            before.profile
+        );
+    }
+    if let LightCommand::Save { name } = cmd {
+        if cli.dry_run {
+            println!("Dry run: would save preset {name}; no file created.");
+        } else {
+            println!("Saved {}", lighting::save_theme(name, &before)?.display());
+        }
+        return Ok(());
+    }
+    let target = match cmd {
+        LightCommand::Show => {
+            println!("{}", serde_json::to_string_pretty(&before)?);
+            return Ok(());
+        }
+        LightCommand::Set {
+            color,
+            effect,
+            brightness,
+            speed,
+            rainbow,
+        } => {
+            let mut target = before.lighting;
+            if let Some(effect) = effect {
+                target = Lighting::new(
+                    *effect,
+                    target.color(),
+                    target.brightness(),
+                    target.speed(),
+                    target.rainbow(),
+                )?;
+            }
+            if let Some(brightness) = brightness {
+                target.params[2] = *brightness;
+            }
+            if let Some(speed) = speed {
+                target.params[1] = 4 - *speed;
+            }
+            if let Some(color) = color {
+                let c = if *color == [255; 3] { [250; 3] } else { *color };
+                target.params[3] = (target.params[3] & 0xf0) | 7;
+                target.params[4..7].copy_from_slice(&c);
+            }
+            if *rainbow {
+                target.params[3] = (target.params[3] & 0xf0) | 8;
+            }
+            target
+        }
+        LightCommand::Preset { .. } => preset.context("missing preset")?,
+        LightCommand::Restore { .. } => {
+            let saved = restored.context("missing lighting backup")?;
+            anyhow::ensure!(
+                saved.profile == before.profile,
+                "backup belongs to profile {}; activate it first",
+                saved.profile
+            );
+            saved.lighting
+        }
+        _ => unreachable!(),
+    };
+    println!(
+        "Profile {}: {} {} → {} {} | brightness {} | speed {}",
+        before.profile,
+        before.lighting.effect(),
+        before.lighting.hex(),
+        target.effect(),
+        target.hex(),
+        target.brightness(),
+        target.speed()
+    );
+    if cli.dry_run {
+        println!("Dry run: no writes or backup files.");
+    } else if let Some(path) = lighting::apply(&mut b, &before, target)? {
+        println!("Read-back verified. Backup: {}", path.display());
+    } else {
+        println!("Already configured; no writes needed.");
+    }
+    Ok(())
 }
 fn open(path: Option<&str>) -> Result<Board<HidWire>> {
     let ds = transport::devices()?;
@@ -124,6 +274,9 @@ fn apply_cli(
     Ok(())
 }
 fn run(cli: Cli) -> Result<()> {
+    if let Command::Lighting { ref command } = cli.command {
+        return lighting_cli(&cli, command);
+    }
     if let Command::Devices = cli.command {
         let ds = transport::devices()?;
         if ds.is_empty() {
@@ -172,7 +325,7 @@ fn run(cli: Cli) -> Result<()> {
     };
     let mut b = open(cli.device.as_deref())?;
     match &cli.command {
-        Command::Devices => unreachable!(),
+        Command::Devices | Command::Lighting { .. } => unreachable!(),
         Command::Tui => return air01::tui::run(&mut b),
         Command::Info => {
             let active = b.active_profile()?;

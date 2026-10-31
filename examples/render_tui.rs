@@ -36,6 +36,18 @@ fn main() -> Result<()> {
     if args.get(4).is_some_and(|v| v == "picker") {
         ui.open_picker();
     }
+    if args.get(4).is_some_and(|v| v == "lighting") {
+        ui.set_lighting(
+            air01::lighting::LightingSnapshot {
+                schema: 1,
+                device_id: 3013,
+                profile: ui.snapshot.active_profile,
+                lighting: air01::lighting::presets()[0].lighting,
+            },
+            air01::lighting::presets(),
+        );
+        ui.lighting_workspace = true;
+    }
     let mut terminal = Terminal::new(TestBackend::new(cols, rows))?;
     terminal.draw(|f| draw(f, &ui))?;
     let mut out = format!(

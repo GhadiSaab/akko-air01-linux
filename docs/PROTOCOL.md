@@ -36,3 +36,25 @@ separate physical check.
 This is a userspace settings tool, not replacement keyboard firmware or a
 Linux kernel driver. No reset, bootloader, calibration, or firmware commands
 are exposed. See NOTICE for upstream research and source revisions.
+
+## Global lighting (Air 01 wired Gen2)
+
+Read `87` using the usual Bit7 request checksum. Reply bytes0..7 are
+`87 mode inverse-speed brightness flags R G B`. Write `07` followed by those
+seven parameter bytes and a **Bit8** checksum at report byte8 (byte9 with report
+ID prefix), sum255 over opcode, payload and checksum. Speed wire=4-host,
+brightness0..4. Ordinary flags low nibble7=fixed RGB,8=rainbow; 0..6 are firmware
+preset colors. High nibble is the effect option; Air01 Wave defaults to option2
+(down). White uses FAFAFA. Raw bytes are preserved for backup and restoration.
+
+Effect IDs:1 Static,2 Breathing,3 Spectrum,4 Wave,5 Ripple,6 Stars,7 Snake,
+8 Reactive,9 Converge,10 Sine wave,11 Kaleidoscope,12 Line wave,14 Laser,
+15 Circle,16 Dazzle,17 Rain,18 Meteor,19 Reactive off. These mode numbers come
+from upstream protocol and vendor metadata; only Static RGB round-trip has been
+physically exercised so far on this board. Host-fed modes and per-key uploads
+are excluded. No side-light writes.
+
+Lighting transactions recheck device3013 and active profile, reject stale state,
+create an exact separate JSON backup, pace the write by1second and read back.
+On failure, recovery requires the same profile and current bytes matching either
+original or attempted values; external changes are never blindly overwritten.
