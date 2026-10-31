@@ -91,10 +91,13 @@ impl Lighting {
         self.params[0]
     }
     pub fn effect(self) -> String {
-        EFFECTS
-            .iter()
-            .find(|e| e.0 == self.mode())
-            .map_or_else(|| format!("Device effect {}", self.mode()), |e| e.1.into())
+        EFFECTS.iter().find(|e| e.0 == self.mode()).map_or_else(
+            || match self.mode() {
+                25 => "Custom animation".into(),
+                m => format!("Device effect {m}"),
+            },
+            |e| e.1.into(),
+        )
     }
     pub fn speed(self) -> u8 {
         4 - self.params[1].min(4)

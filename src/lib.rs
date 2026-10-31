@@ -1,3 +1,4 @@
+pub mod animation;
 pub mod device;
 pub mod keyboard;
 pub mod lighting;
