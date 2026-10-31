@@ -55,7 +55,7 @@ fn main() -> Result<()> {
     let mut terminal = Terminal::new(TestBackend::new(cols, rows))?;
     terminal.draw(|f| draw(f, &ui))?;
     let mut out = format!(
-        "<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"{}\" height=\"{}\"><rect width=\"100%\" height=\"100%\" fill=\"#0a0f18\"/>",
+        "<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"{}\" height=\"{}\"><rect width=\"100%\" height=\"100%\" fill=\"#24283b\"/>",
         cols * 9,
         rows * 18
     );
@@ -63,7 +63,7 @@ fn main() -> Result<()> {
         for x in 0..cols {
             let cell = &terminal.backend().buffer()[(x, y)];
             let bg = if cell.bg == Color::Reset {
-                "#0a0f18".into()
+                "#24283b".into()
             } else {
                 rgb(cell.bg)
             };

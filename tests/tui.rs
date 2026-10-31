@@ -226,10 +226,10 @@ fn compact_fn_keycap_shows_effective_remapped_base_assignment() {
         .unwrap();
     let mut t = ratatui::Terminal::new(ratatui::backend::TestBackend::new(80, 24)).unwrap();
     t.draw(|f| air01::tui::draw(f, &s)).unwrap();
-    let face = (r.x + 1..r.right() - 1)
+    let face = (r.x..r.right())
         .map(|x| t.backend().buffer()[(x, r.y + 1)].symbol())
         .collect::<String>();
-    assert_eq!(face.trim(), "Ct");
+    assert_eq!(face.trim(), "Ctrl");
 }
 #[test]
 fn confirmation_clicks_follow_rendered_buttons_in_odd_sized_large_terminals() {

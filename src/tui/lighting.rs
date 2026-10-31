@@ -117,7 +117,31 @@ impl LightingUi {
         self.draft = self.draft.with_color(c);
         self.mark_custom();
     }
+    pub fn enabled(&self, focus: usize) -> bool {
+        match focus {
+            6 => self.draft.mode() != 1,
+            9 | 12 => self.dirty(),
+            11 => self.undo.is_some(),
+            13 => !self.dirty(),
+            _ => true,
+        }
+    }
+    fn move_focus(&mut self, delta: isize) {
+        const ORDER: [usize; 14] = [0, 1, 7, 2, 3, 4, 5, 6, 8, 9, 10, 11, 12, 13];
+        let mut i = ORDER.iter().position(|f| *f == self.focus).unwrap_or(0) as isize;
+        for _ in 0..ORDER.len() {
+            i = (i + delta).rem_euclid(ORDER.len() as isize);
+            let f = ORDER[i as usize];
+            if self.enabled(f) {
+                self.focus = f;
+                break;
+            }
+        }
+    }
     fn adjust(&mut self, delta: i16) {
+        if !self.enabled(self.focus) {
+            return;
+        }
         match self.focus {
             0 => {
                 if !self.presets.is_empty() {
@@ -159,6 +183,9 @@ impl LightingUi {
         }
     }
     fn activate(&mut self) -> Intent {
+        if !self.enabled(self.focus) {
+            return Intent::None;
+        }
         match self.focus {
             0 => {
                 self.choose_preset(self.selected);
@@ -210,20 +237,20 @@ impl LightingUi {
             return Intent::None;
         }
         match key.code {
-            KeyCode::Tab => self.focus = (self.focus + 1) % 14,
-            KeyCode::BackTab => self.focus = (self.focus + 13) % 14,
+            KeyCode::Tab => self.move_focus(1),
+            KeyCode::BackTab => self.move_focus(-1),
             KeyCode::Up => {
                 if self.focus == 0 {
                     self.adjust(-1)
                 } else {
-                    self.focus = (self.focus + 13) % 14
+                    self.move_focus(-1)
                 }
             }
             KeyCode::Down => {
                 if self.focus == 0 {
                     self.adjust(1)
                 } else {
-                    self.focus = (self.focus + 1) % 14
+                    self.move_focus(1)
                 }
             }
             KeyCode::Left => self.adjust(-1),
@@ -275,6 +302,9 @@ impl LightingUi {
         }
         for (i, r) in g.sliders.iter().enumerate() {
             if r.contains(pt) {
+                if !self.enabled(i + 2) {
+                    return Intent::None;
+                }
                 self.focus = i + 2;
                 let max = if i < 3 { 255 } else { 4 };
                 let v = ((event.column - r.x) as u32 * max
@@ -424,11 +454,11 @@ pub fn preview_color(l: Lighting) -> Option<[u8; 3]> {
 pub fn draw(f: &mut Frame, s: &UiState) {
     let g = LightLayout::new(f.area());
     let a = g.workspace;
-    f.render_widget(
-        Paragraph::new("Air 01")
-            .alignment(Alignment::Center)
-            .style(Style::default().fg(TEXT).bold()),
-        Rect::new(a.x, a.y, a.width, 1),
+    theme::shell(
+        f,
+        &s.lighting.as_ref().map_or("USB".to_string(), |l| {
+            format!("USB · Profile {}", l.original.profile)
+        }),
     );
     super::view::workspace_nav(f, s);
     let Some(l) = &s.lighting else {
@@ -453,24 +483,30 @@ pub fn draw(f: &mut Frame, s: &UiState) {
     let dirty = l.dirty();
     f.render_widget(
         Paragraph::new(format!(
-            "Connected via USB · Profile {} · {}",
-            l.original.profile,
+            "{}  ·  {}",
+            l.active_name(),
             if dirty {
                 "Draft — not applied"
             } else {
-                "Up to date"
+                "Applied to keyboard"
             }
         ))
         .alignment(Alignment::Center)
         .style(Style::default().fg(if dirty { GOLD } else { DIM })),
-        Rect::new(a.x, a.y + 1, a.width, 1),
+        Rect::new(a.x + 2, a.y + 2, a.width - 4, 1),
     );
     let color = if l.draft.rainbow() {
         "Multicolor effect".to_string()
     } else {
         l.draft.hex()
     };
-    panel(f, g.preview, &format!(" {} · {} ", l.active_name(), color));
+    text(
+        f,
+        Rect::new(g.preview.x, g.preview.y, g.preview.width, 1),
+        format!("Keyboard preview · {color}"),
+        DIM,
+        BG,
+    );
     let inner = g.preview.inner(Margin::new(1, 1));
     let pitch = if g.preview.height >= 14 { 2 } else { 1 };
     let rgb = preview_color(l.draft);
@@ -489,7 +525,11 @@ pub fn draw(f: &mut Frame, s: &UiState) {
                     (u32::from(red) * 299 + u32::from(green) * 587 + u32::from(blue) * 114) / 1000;
                 (
                     Color::Rgb(red, green, blue),
-                    if luminance > 150 { TEXT } else { Color::White },
+                    if luminance > 150 {
+                        Color::Rgb(20, 24, 38)
+                    } else {
+                        Color::White
+                    },
                 )
             }
             None => (KEY, DIM),
@@ -501,16 +541,18 @@ pub fn draw(f: &mut Frame, s: &UiState) {
             r,
         );
     }
-    let library = Block::bordered()
-        .border_type(BorderType::Rounded)
-        .title(Line::from(" Presets ").style(Style::default().fg(DIM)))
-        .title_bottom(
-            Line::from(format!(" ↑↓ {}/{} ", l.selected + 1, l.presets.len()))
-                .style(Style::default().fg(DIM)),
-        )
-        .border_style(Style::default().fg(BORDER))
-        .style(Style::default().bg(PANEL).fg(DIM));
-    f.render_widget(library, g.library);
+    theme::divider(f, a, g.preview.bottom());
+    let separator = g.library.right() + 1;
+    for y in g.library.y..a.bottom() - 4 {
+        text(f, Rect::new(separator, y, 1, 1), "│", BORDER, BG);
+    }
+    text(
+        f,
+        Rect::new(g.library.x, g.library.y, g.library.width, 1),
+        format!("Presets  {}/{}", l.selected + 1, l.presets.len()),
+        if l.focus == 0 { MINT } else { DIM },
+        BG,
+    );
     let start = l.preset_start(g.presets.height);
     for (row, p) in l
         .presets
@@ -520,7 +562,7 @@ pub fn draw(f: &mut Frame, s: &UiState) {
         .enumerate()
     {
         let i = start + row;
-        let selected = i == l.selected;
+        let selected = i == l.selected && l.focus == 0;
         let active = p.name == l.active_name();
         let [red, green, blue] = p.lighting.color();
         let r = Rect::new(g.presets.x, g.presets.y + row as u16, g.presets.width, 1);
@@ -563,18 +605,17 @@ pub fn draw(f: &mut Frame, s: &UiState) {
         control(f, *r, label, l.focus == *focus);
         if *focus == 9 && dirty {
             f.render_widget(
-                Paragraph::new(label)
-                    .alignment(Alignment::Center)
-                    .style(Style::default().fg(Color::White).bg(MINT).bold()),
+                Paragraph::new(label).alignment(Alignment::Center).style(
+                    Style::default()
+                        .fg(MINT)
+                        .bg(if l.focus == 9 { SELECTED } else { BG })
+                        .bold(),
+                ),
                 *r,
             );
         }
-        if (*focus == 9 && !dirty)
-            || (*focus == 11 && l.undo.is_none())
-            || (*focus == 12 && !dirty)
-            || (*focus == 13 && dirty)
-        {
-            text(f, *r, format!(" {label}"), DIM, KEY);
+        if !l.enabled(*focus) {
+            text(f, *r, format!(" {label}"), DIM, BG);
         }
     }
     let caption = if l.draft.rainbow() {
@@ -601,11 +642,19 @@ pub fn draw(f: &mut Frame, s: &UiState) {
         text(
             f,
             Rect::new(r.x, r.y - 1, r.width, 1),
-            format!("{name} {v}"),
+            if i == 4 && !l.enabled(6) {
+                "Speed — static".into()
+            } else {
+                format!("{name} {v}")
+            },
             if l.focus == i + 2 { MINT } else { DIM },
             PANEL,
         );
-        let filled = (u32::from(v) * u32::from(r.width) / max) as usize;
+        let filled = if i == 4 && !l.enabled(6) {
+            0
+        } else {
+            (u32::from(v) * u32::from(r.width) / max) as usize
+        };
         let width = r.width as usize;
         f.render_widget(
             Paragraph::new(Line::from(vec![
@@ -620,24 +669,7 @@ pub fn draw(f: &mut Frame, s: &UiState) {
         let [red, green, blue] = SWATCHES[i];
         text(f, *r, "  ", TEXT, Color::Rgb(red, green, blue));
     }
-    if g.editor.height >= 8 {
-        text(
-            f,
-            Rect::new(g.editor.x, g.editor.y + 7, g.editor.width, 1),
-            format!(
-                "{}{}",
-                l.active_name(),
-                if l.draft.mode() == 1 {
-                    " · Static ignores speed"
-                } else {
-                    ""
-                }
-            ),
-            DIM,
-            PANEL,
-        );
-    }
-    let status = if s.status.starts_with("Click a key") {
+    let status = if s.status.starts_with("Profile tabs preview") {
         if dirty {
             "Previewing changes. Apply when ready."
         } else {
@@ -652,12 +684,6 @@ pub fn draw(f: &mut Frame, s: &UiState) {
         status,
         DIM,
         BG,
-    );
-    f.render_widget(
-        Paragraph::new("Tab focus · ←→ adjust · Enter choose · ? Help · q Quit")
-            .alignment(Alignment::Center)
-            .style(Style::default().fg(DIM)),
-        Rect::new(a.x, a.bottom() - 1, a.width, 1),
     );
     if let Some(e) = &l.editor {
         draw_editor(f, e)

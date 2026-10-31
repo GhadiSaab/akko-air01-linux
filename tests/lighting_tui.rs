@@ -287,3 +287,47 @@ fn multicolor_preview_does_not_invent_per_key_colors() {
         Some([255, 105, 180])
     );
 }
+#[test]
+fn focus_follows_visual_order_and_skips_unavailable_actions() {
+    let mut s = state();
+    press(&mut s, KeyCode::Char('2'));
+    press(&mut s, KeyCode::Tab);
+    assert_eq!(s.lighting.as_ref().unwrap().focus, 1);
+    press(&mut s, KeyCode::Tab);
+    assert_eq!(s.lighting.as_ref().unwrap().focus, 7);
+    for focus in [2, 3, 4, 5, 8, 10, 13, 0] {
+        press(&mut s, KeyCode::Tab);
+        assert_eq!(s.lighting.as_ref().unwrap().focus, focus);
+    }
+}
+#[test]
+fn static_speed_is_disabled_for_both_mouse_and_keyboard() {
+    let mut s = state();
+    press(&mut s, KeyCode::Char('2'));
+    let before = s.lighting.as_ref().unwrap().draft;
+    s.lighting.as_mut().unwrap().focus = 6;
+    press(&mut s, KeyCode::Right);
+    assert_eq!(s.lighting.as_ref().unwrap().draft, before);
+    let r = air01::tui::lighting::LightLayout::new(Rect::new(0, 0, 80, 24)).sliders[4];
+    s.handle_mouse(
+        MouseEvent {
+            kind: MouseEventKind::Down(MouseButton::Left),
+            column: r.right() - 1,
+            row: r.y,
+            modifiers: KeyModifiers::NONE,
+        },
+        Rect::new(0, 0, 80, 24),
+    );
+    assert_eq!(s.lighting.as_ref().unwrap().draft, before);
+}
+#[test]
+fn bright_preview_keycaps_keep_dark_readable_legends() {
+    let mut s = state();
+    press(&mut s, KeyCode::Char('2'));
+    s.lighting.as_mut().unwrap().set_color([255, 105, 180]);
+    let mut t = Terminal::new(TestBackend::new(120, 34)).unwrap();
+    t.draw(|f| draw(f, &s)).unwrap();
+    let r = air01::tui::lighting::LightLayout::new(Rect::new(0, 0, 120, 34)).preview;
+    let cell = &t.backend().buffer()[(r.x + 1, r.y + 1)];
+    assert!(matches!(cell.fg,Color::Rgb(red,green,blue) if red<60 && green<60 && blue<60));
+}

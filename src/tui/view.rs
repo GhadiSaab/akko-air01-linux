@@ -28,12 +28,7 @@ impl UiLayout {
         let area = theme::workspace(area);
         let large = false;
         let w = area.width.saturating_sub(4).min(88);
-        let top = area.y
-            + if area.height < 28 {
-                3
-            } else {
-                4 + ((area.height.saturating_sub(24)) / 3).min(3)
-            };
+        let top = area.y + 4 + ((area.height.saturating_sub(28)) / 4).min(2);
         let board = Rect::new(area.x + (area.width - w) / 2, top, w, 15);
         let keyboard = board.inner(Margin::new(1, 1));
         let footer = Rect::new(area.x, area.bottom().saturating_sub(3), area.width, 3);
@@ -47,18 +42,18 @@ impl UiLayout {
             .map(|p| {
                 (
                     p,
-                    Rect::new(area.x + 9 + u16::from(p) * 6, area.y + 1, 5, 1),
+                    Rect::new(area.x + 9 + u16::from(p) * 6, area.y + 2, 5, 1),
                 )
             })
             .collect();
         let layer_tabs = vec![
-            (Layer::Base, Rect::new(area.x + 42, area.y + 1, 7, 1)),
-            (Layer::FnWin, Rect::new(area.x + 49, area.y + 1, 8, 1)),
-            (Layer::FnMac, Rect::new(area.x + 57, area.y + 1, 8, 1)),
+            (Layer::Base, Rect::new(area.x + 42, area.y + 2, 7, 1)),
+            (Layer::FnWin, Rect::new(area.x + 49, area.y + 2, 8, 1)),
+            (Layer::FnMac, Rect::new(area.x + 57, area.y + 2, 8, 1)),
         ];
-        let activate = Rect::new(area.right().saturating_sub(13), area.y + 1, 12, 1);
+        let activate = Rect::new(area.right().saturating_sub(13), area.y + 2, 12, 1);
         let buttons = vec![
-            (UiButton::Backup, Rect::new(area.x, footer.y + 1, 10, 1)),
+            (UiButton::Backup, Rect::new(area.x + 2, footer.y + 1, 10, 1)),
             (
                 UiButton::Restore,
                 Rect::new(area.x + 12, footer.y + 1, 11, 1),
@@ -194,20 +189,18 @@ pub fn draw(f: &mut Frame, s: &UiState) {
         return;
     }
     let area = theme::workspace(area);
+    theme::shell(
+        f,
+        &format!(
+            "active: {} · viewing: {} · USB",
+            s.snapshot.active_profile, s.selected_profile
+        ),
+    );
     workspace_nav(f, s);
     let g = UiLayout::new(area);
     f.render_widget(
-        Paragraph::new(format!(
-            "Air 01   ·   active: {}   ·   viewing: {}",
-            s.snapshot.active_profile, s.selected_profile
-        ))
-        .alignment(Alignment::Center)
-        .style(Style::default().fg(TEXT).bold()),
-        Rect::new(area.x, area.y, area.width, 1),
-    );
-    f.render_widget(
         Paragraph::new(" PROFILE").style(Style::default().fg(DIM)),
-        Rect::new(area.x, area.y + 1, 9, 1),
+        Rect::new(area.x + 1, area.y + 2, 8, 1),
     );
     for (p, r) in &g.profile_tabs {
         button(
@@ -226,7 +219,7 @@ pub fn draw(f: &mut Frame, s: &UiState) {
     }
     f.render_widget(
         Paragraph::new("LAYER").style(Style::default().fg(DIM)),
-        Rect::new(area.x + 35, area.y + 1, 6, 1),
+        Rect::new(area.x + 35, area.y + 2, 6, 1),
     );
     for (layer, r) in &g.layer_tabs {
         button(
@@ -242,12 +235,8 @@ pub fn draw(f: &mut Frame, s: &UiState) {
     }
     button(f, g.activate, "Activate [a]", false);
     f.render_widget(
-        Block::bordered()
-            .border_type(BorderType::Rounded)
-            .border_style(Style::default().fg(BORDER))
-            .style(Style::default().bg(PANEL))
-            .title(Line::from(" Keyboard · click a key ").style(Style::default().fg(DIM))),
-        g.board,
+        Paragraph::new("Keyboard · click a key").style(Style::default().fg(DIM)),
+        Rect::new(g.board.x, g.board.y, g.board.width, 1),
     );
     for (slot, r) in keyboard::rectangles(g.keyboard, g.large) {
         let Some(k) = keyboard::key(slot) else {
@@ -260,20 +249,9 @@ pub fn draw(f: &mut Frame, s: &UiState) {
             !inherited
         };
         let selected = slot == s.selected_slot;
-        let border = if selected {
-            MINT
-        } else if changed {
-            GOLD
-        } else {
-            BORDER
-        };
         let bg = if selected { SELECTED } else { KEY };
-        let block = Block::bordered()
-            .border_type(BorderType::Rounded)
-            .border_style(Style::default().fg(border))
-            .style(Style::default().bg(bg));
-        let inner = block.inner(r);
-        f.render_widget(block, r);
+        let inner = Rect::new(r.x, r.y + 1, r.width, 1);
+        f.render_widget(Block::new().style(Style::default().bg(bg)), inner);
         let legend = short(k.legend, inner.width);
         if g.large {
             let assigned = if changed {
@@ -359,7 +337,7 @@ pub fn draw(f: &mut Frame, s: &UiState) {
     f.render_widget(
         Paragraph::new("↑↓←→ move   Enter edit   PgUp/PgDn profile   Tab layer   amber = remapped")
             .style(Style::default().fg(DIM)),
-        Rect::new(g.footer.x, g.footer.y, g.footer.width, 1),
+        Rect::new(g.footer.x + 2, g.footer.y, g.footer.width - 4, 1),
     );
     for (b, r) in &g.buttons {
         button(

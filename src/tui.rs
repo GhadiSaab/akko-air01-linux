@@ -56,7 +56,16 @@ pub struct UiState {
 }
 impl UiState {
     pub fn new(snapshot: Snapshot) -> Self {
-        Self{lighting:None,lighting_workspace:false,selected_profile:snapshot.active_profile,snapshot,selected_slot:0,layer:Layer::Base,mode:Mode::Browse,status:"Click a key to change its assignment. Profile tabs preview; Activate switches the board.".into()}
+        Self {
+            lighting: None,
+            lighting_workspace: false,
+            selected_profile: snapshot.active_profile,
+            snapshot,
+            selected_slot: 0,
+            layer: Layer::Base,
+            mode: Mode::Browse,
+            status: "Profile tabs preview; Activate switches the board.".into(),
+        }
     }
     pub fn set_lighting(
         &mut self,
