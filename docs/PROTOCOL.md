@@ -43,7 +43,7 @@ Read `87` using the usual Bit7 request checksum. Reply bytes0..7 are
 `87 mode inverse-speed brightness flags R G B`. Write `07` followed by those
 seven parameter bytes and a **Bit8** checksum at report byte8 (byte9 with report
 ID prefix), sum255 over opcode, payload and checksum. Speed wire=4-host,
-brightness0..4. Ordinary flags low nibble7=fixed RGB,8=rainbow; 0..6 are firmware
+brightness0..4. Air01 flags low nibble8=fixed RGB,7=rainbow; 0..6 are firmware
 preset colors. High nibble is the effect option; Air01 Wave defaults to option2
 (down). White uses FAFAFA. Raw bytes are preserved for backup and restoration.
 
@@ -58,3 +58,15 @@ Lighting transactions recheck device3013 and active profile, reject stale state,
 create an exact separate JSON backup, pace the write by1second and read back.
 On failure, recovery requires the same profile and current bytes matching either
 original or attempted values; external changes are never blindly overwritten.
+
+### Air01 color correction
+
+The vendor build `js/b1d82b61.js` maps `yc3123_akko_air01_3m_1k` to
+`class d8 extends u`, which explicitly overrides `DAZZLE=7;NORMAL=8`.
+The original implementation incorrectly used the generic Gen2 pair (reversed).
+This produced rainbow instead of fixed RGB even though exact byte readback
+passed. The user confirmed corrected `01 02 04 08 FF 00 00` renders entirely
+red. They subsequently requested solid pink `#FF69B4`; it remains applied.
+The Air01 palette indices are red, green, blue, orange `FF5500`, purple
+`7700FF`, yellow and white. Index selection overrides otherwise-unused RGB bytes.
+Raw snapshots preserve wire values exactly and are never silently converted.

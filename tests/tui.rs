@@ -231,3 +231,55 @@ fn compact_fn_keycap_shows_effective_remapped_base_assignment() {
         .collect::<String>();
     assert_eq!(face.trim(), "Ct");
 }
+#[test]
+fn confirmation_clicks_follow_rendered_buttons_in_odd_sized_large_terminals() {
+    use crossterm::event::{MouseButton, MouseEvent, MouseEventKind};
+    use ratatui::{backend::TestBackend, prelude::*};
+    for (w, h) in [(160, 51), (161, 50), (161, 51)] {
+        for (label, expected) in [("Apply [y]", true), ("Cancel [n]", false)] {
+            let mut s = state();
+            s.confirm("Test confirmation".into());
+            let mut t = Terminal::new(TestBackend::new(w, h)).unwrap();
+            t.draw(|f| air01::tui::draw(f, &s)).unwrap();
+            let mut point = None;
+            for y in 0..h {
+                for x in 0..w.saturating_sub(label.len() as u16) {
+                    let text = (x..x + label.len() as u16)
+                        .map(|i| t.backend().buffer()[(i, y)].symbol())
+                        .collect::<String>();
+                    if text == label {
+                        point = Some((x, y));
+                    }
+                }
+            }
+            let (column, row) = point.expect("visible button");
+            assert_eq!(
+                s.handle_mouse(
+                    MouseEvent {
+                        kind: MouseEventKind::Down(MouseButton::Left),
+                        column,
+                        row,
+                        modifiers: KeyModifiers::NONE
+                    },
+                    Rect::new(0, 0, w, h)
+                ),
+                Intent::Confirm(expected),
+                "button {label} at{w}x{h}"
+            );
+        }
+    }
+}
+#[test]
+fn compact_keymap_keeps_the_full_initial_status_visible() {
+    let s = state();
+    let mut t = ratatui::Terminal::new(ratatui::backend::TestBackend::new(80, 24)).unwrap();
+    t.draw(|f| air01::tui::draw(f, &s)).unwrap();
+    let text = t
+        .backend()
+        .buffer()
+        .content()
+        .iter()
+        .map(|c| c.symbol())
+        .collect::<String>();
+    assert!(text.contains("switches the board."));
+}

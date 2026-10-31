@@ -14,13 +14,24 @@ profile. Distinguish byte verification from physical visual confirmation. All
 controls must remain reachable at80x24 and centered with nonzero origins. No fake
 rainbow key coloring. Custom draft must survive preset changes and library refresh.
 
-- [ ] Red tests: fixed/rainbow flags, Air01 preset decode and golden packets;
+- [x] Red tests: fixed/rainbow flags, Air01 preset decode and golden packets;
   implement shared model constants/methods for CLI and TUI. Verify unit tests.
-- [ ] Red tests: Custom entry, edited preset labeling and retained custom draft;
+- [x] Red tests: Custom entry, edited preset labeling and retained custom draft;
   implement state transitions and refresh preservation.
-- [ ] Red tests: bounded centered geometry, nav hits, all sliders/buttons at80x24
+- [x] Red tests: bounded centered geometry, nav hits, all sliders/buttons at80x24
   and large offsets; implement common theme and redesigned lighting/keymap views.
 - [ ] Render and inspect80x24/120x34/large window; fix layout issues; run all tests,
-  fmt/Clippy; fresh whole-feature review. Corrected red/green/blue hardware probe,
-  user visual confirmation, original restore and keymap preservation. Nix install
+  fmt/Clippy; fresh whole-feature review. Corrected red hardware probe,
+  user visual confirmation and requested pink setting; keymap preservation. Nix install
   and installed TUI smoke test; document and commit evidence.
+
+## Review and evidence
+- Fresh reviewer found one Important issue: odd terminal sizes shifted modal
+  hit targets by a cell. Regression clicks the rendered Apply/Cancel labels at
+  160x51,161x50,161x51; normalized all modal geometry to the bounded workspace.
+- Reclaimed a status row in compact keymap mode to avoid clipping instructions.
+- User confirmed corrected fixed-color packet renders solid red. Restored the
+  prior raw lighting, then applied the user's new explicit request: solid pink
+  #FF69B4, active profile1, brightness4. Leave pink in place.
+- Full base/Fn snapshot equals the earlier snapshot: all four base and eight Fn
+  maps unchanged. No new profile selection or keymap writes.

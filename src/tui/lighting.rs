@@ -670,6 +670,7 @@ pub fn draw(f: &mut Frame, s: &UiState) {
     }
 }
 fn editor_rect(a: Rect) -> Rect {
+    let a = theme::workspace(a);
     Rect::new(a.x + (a.width - 60) / 2, a.y + (a.height - 10) / 2, 60, 10)
 }
 fn editor_buttons(a: Rect) -> (Rect, Rect) {

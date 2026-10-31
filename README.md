@@ -131,9 +131,10 @@ air01 tui
 ```
 
 The TUI draws the real **84-key Air 01**, with staggered rows, wide modifiers,
-spacebar and arrow keys. It fits 80×24; at 100×34 or larger it shows both the
-physical legend and changed assignment on each keycap. Selected keys are mint;
-remapped keys are amber. Initial USB reading takes about 12 seconds, with a
+spacebar and arrow keys. It fits 80×24 and centers a bounded keyboard
+inside a workspace up to 112×36, leaving space around it on larger terminals.
+A neutral light canvas, white surfaces and blue selection/action accents keep
+controls visually distinct. Remapped keys are amber. Initial USB reading takes about 12 seconds, with a
 progress screen while profiles and lighting are read.
 
 - **Click a key** to open its searchable assignment picker. Type to filter,
@@ -164,9 +165,13 @@ not start edits.
 
 Press **2** or click **Lighting**; **1** returns to Keymap. **? / F1** opens
 Help. The lighting workspace controls the **active hardware profile**, independent
-of the profile previewed in Keymap. Its keyboard colors are a palette preview;
-animated effects run on the keyboard, not as a simulated terminal animation.
+of the profile previewed in Keymap. Its keyboard shows the selected solid RGB color;
+multicolor animations use neutral keycaps and an explicit label because their
+per-key color arrangement is controlled by firmware.
 
+- **Custom** is always available. Editing a color, effect, brightness or speed
+  selects Custom and keeps that draft when you try another preset. Modified
+  values never retain a misleading built-in preset name.
 - Click a preset, or use ↑↓ and Enter in the library. Eight built-ins include
   Mint, Ember, Ocean, Rose, Amethyst, Frost, Aurora and Focus.
 - Click/drag RGB, brightness and speed bars. Click swatches for quick colors;
@@ -175,7 +180,7 @@ animated effects run on the keyboard, not as a simulated terminal animation.
   Spectrum always uses changing colors. Selecting a custom color exits Spectrum.
 - Tab / Shift+Tab moves focus through every control; ←→ adjusts values and
   Enter activates the focused control. Presets and edits only change the draft.
-- **a Apply** saves an exact lighting backup, writes once and verifies readback.
+- **a Apply to keyboard** saves an exact lighting backup, writes once and verifies readback.
   **u Undo** restores the previous applied setup, with the same verification.
   **r Revert** discards draft edits. **Reload** refreshes the active profile;
   revert a changed draft first.

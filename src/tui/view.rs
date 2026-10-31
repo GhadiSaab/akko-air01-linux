@@ -28,7 +28,12 @@ impl UiLayout {
         let area = theme::workspace(area);
         let large = false;
         let w = area.width.saturating_sub(4).min(88);
-        let top = area.y + 4 + ((area.height.saturating_sub(24)) / 3).min(3);
+        let top = area.y
+            + if area.height < 28 {
+                3
+            } else {
+                4 + ((area.height.saturating_sub(24)) / 3).min(3)
+            };
         let board = Rect::new(area.x + (area.width - w) / 2, top, w, 15);
         let keyboard = board.inner(Margin::new(1, 1));
         let footer = Rect::new(area.x, area.bottom().saturating_sub(3), area.width, 3);
@@ -415,6 +420,7 @@ pub fn draw(f: &mut Frame, s: &UiState) {
     }
 }
 fn centered(area: Rect, width: u16, height: u16) -> Rect {
+    let area = theme::workspace(area);
     let w = width.min(area.width.saturating_sub(4));
     let h = height.min(area.height.saturating_sub(2));
     Rect::new(
@@ -531,7 +537,7 @@ pub(super) fn workspace_nav(f: &mut Frame, s: &UiState) {
     button(f, help, "? Help", false);
 }
 pub(super) fn draw_help(f: &mut Frame) {
-    let a = f.area();
+    let a = theme::workspace(f.area());
     let p = Rect::new(a.x + (a.width - 74) / 2, a.y + (a.height - 20) / 2, 74, 20);
     popup_frame(f, p, " AIR01 · QUICK GUIDE ");
     let help = "WORKSPACES
@@ -561,7 +567,7 @@ Drafts stay on screen until Apply. Press any key or click to close.";
 }
 
 pub(super) fn draw_notice(f: &mut Frame, text: &str) {
-    let a = f.area();
+    let a = theme::workspace(f.area());
     let p = Rect::new(a.x + 4, a.y + (a.height - 14) / 2, a.width - 8, 14);
     popup_frame(f, p, " AIR01 · NOTICE ");
     f.render_widget(

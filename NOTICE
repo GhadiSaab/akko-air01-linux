@@ -30,3 +30,9 @@ The custom keyboard widget follows Ratatui's documented widget/mouse patterns.
 Global LED parameters, mode numbers and checksum variants informed by sharkfin
 app/src-tauri/src/protocol/mod.rs and app/src/lib/lighting-modes.ts at the above
 revision. Air01-supported effect metadata checked against the vendor registry.
+
+Air01-specific fixed/rainbow flags and indexed colors were confirmed directly
+from the vendor class d8 in https://web.akkogear.com/js/b1d82b61.js, with the
+shared serializer in https://web.akkogear.com/js/4abb36b7.js. No vendor source
+is bundled. UI spacing and hierarchy were informed by Apple's public HIG:
+https://developer.apple.com/design/human-interface-guidelines/layout
