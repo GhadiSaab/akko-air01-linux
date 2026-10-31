@@ -20,7 +20,7 @@ rainbow key coloring. Custom draft must survive preset changes and library refre
   implement state transitions and refresh preservation.
 - [x] Red tests: bounded centered geometry, nav hits, all sliders/buttons at80x24
   and large offsets; implement common theme and redesigned lighting/keymap views.
-- [ ] Render and inspect80x24/120x34/large window; fix layout issues; run all tests,
+- [x] Render and inspect80x24/120x34/large window; fix layout issues; run all tests,
   fmt/Clippy; fresh whole-feature review. Corrected red hardware probe,
   user visual confirmation and requested pink setting; keymap preservation. Nix install
   and installed TUI smoke test; document and commit evidence.
@@ -35,3 +35,13 @@ rainbow key coloring. Custom draft must survive preset changes and library refre
   #FF69B4, active profile1, brightness4. Leave pink in place.
 - Full base/Fn snapshot equals the earlier snapshot: all four base and eight Fn
   maps unchanged. No new profile selection or keymap writes.
+
+## Installed verification
+- 67 tests pass; cargo fmt --check and Clippy --all-targets -D warnings pass.
+- Nix build succeeded and installed through the existing air01 symlink/launcher.
+- Installed80x24 PTY test passed: custom hex edit, named theme save, restart,
+  scroll to saved theme, clean quit, mouse/terminal restoration. Temporary theme
+  files removed with temporary state directory. Preview/save did not alter HID
+  lighting. Final device state stays fixed pink #FF69B4 at brightness4/profile1.
+- Rendered120x34 live-state screenshot updated in docs/images/lighting-studio.png.
+- Work committed on feat/centered-custom-editor; no push or publication.

@@ -134,8 +134,8 @@ The TUI draws the real **84-key Air 01**, with staggered rows, wide modifiers,
 spacebar and arrow keys. It fits 80×24 and centers a bounded keyboard
 inside a workspace up to 112×36, leaving space around it on larger terminals.
 A neutral light canvas, white surfaces and blue selection/action accents keep
-controls visually distinct. Remapped keys are amber. Initial USB reading takes about 12 seconds, with a
-progress screen while profiles and lighting are read.
+controls visually distinct. Remapped keys are amber. Initial USB reading takes
+about 12 seconds, with a progress screen while profiles and lighting are read.
 
 - **Click a key** to open its searchable assignment picker. Type to filter,
   use arrows or the mouse, and press Enter/click an assignment to preview it.
@@ -176,7 +176,7 @@ per-key color arrangement is controlled by firmware.
   Mint, Ember, Ocean, Rose, Amethyst, Frost, Aurora and Focus.
 - Click/drag RGB, brightness and speed bars. Click swatches for quick colors;
   **x Hex color** accepts `#RRGGBB` (Ctrl+U clears the input).
-- Use the effect arrows and Rainbow toggle. Static ignores animation speed;
+- Use the effect arrows and Multicolor toggle. Static ignores animation speed;
   Spectrum always uses changing colors. Selecting a custom color exits Spectrum.
 - Tab / Shift+Tab moves focus through every control; ←→ adjusts values and
   Enter activates the focused control. Presets and edits only change the draft.
