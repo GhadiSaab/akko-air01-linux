@@ -131,12 +131,30 @@ against a timed-out device while this process is still exiting.
 air01 tui
 ```
 
-Use a terminal of at least 80×24. Initial reading takes about 12 seconds over
-USB. Left/right previews a profile without activating it. Up/down selects a
-slot. Tab cycles base, Windows Fn, and Mac Fn maps. `e` edits; `s` previews the
-Ctrl/Fn preset for the viewed profile; `a` activates that profile. `b` writes a
-fresh backup; `r` requests the absolute path of a snapshot to restore. Mutations
-require `y` confirmation. `q` exits; Ctrl+C exits from any mode.
+The TUI draws the real **84-key Air 01**, with staggered rows, wide modifiers,
+spacebar and arrow keys. It fits 80×24; at 100×34 or larger it shows both the
+physical legend and changed assignment on each keycap. Selected keys are mint;
+remapped keys are amber. Initial USB reading takes about 12 seconds.
+
+- **Click a key** to open its searchable assignment picker. Type to filter,
+  use arrows or the mouse, and press Enter/click an assignment to preview it.
+  F2 opens advanced raw assignment input; Esc cancels.
+- **Arrow keys** move spatially around the keyboard. Enter / `e` opens the
+  selected key's picker. Hidden matrix gaps are never navigation targets.
+- Click **profile tabs**, or use PgUp/PgDn / `[` / `]`, to preview profiles.
+  Only **Activate / `a`** changes the board's active profile.
+- Click **Base / Win Fn / Mac Fn**, or use Tab, to inspect layers. Empty Fn
+  entries display the inherited base assignment rather than a disabled key.
+- **`s`** previews the Ctrl/Fn preset for the viewed profile; **`b`** saves a
+  fresh backup; **`r`** requests an absolute snapshot path to restore.
+- Changes show an **Apply / Cancel** dialog, followed by the same fresh backup
+  and verified transaction as the CLI. Click Apply or press `y` to commit.
+- **`q`** quits from the keyboard view. Ctrl+C exits from every mode. Mouse
+  capture is disabled and terminal state restored on exit.
+
+Use the slot-oriented CLI for advanced inspection of storage positions that
+have no physical key. Below 80×24, the TUI asks for a larger terminal and does
+not start edits.
 
 ## Validation and development
 

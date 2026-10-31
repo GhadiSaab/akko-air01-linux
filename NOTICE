@@ -16,3 +16,13 @@ GPL-3.0. Used as protocol and device-layout research; no firmware blobs are
 included in this project.
 
 No affiliation with or endorsement by Akko or the upstream projects.
+
+Visual keyboard geometry was cross-checked against the official Air 01 photo
+https://en.akkogear.com/wp-content/uploads/2026/01/Air01-XGDB-GX-1.avif
+and the vendor web configurator's Air01 geometry (js/8e84b96c.js). Coordinates,
+physical legends and matrix associations are factual layout data. No vendor
+photographs or artwork are distributed. Slot87's lighting action was confirmed
+in a read-only device snapshot.
+
+Terminal UI engine: Ratatui https://ratatui.rs/ (MIT); input: Crossterm (MIT).
+The custom keyboard widget follows Ratatui's documented widget/mouse patterns.

@@ -1,5 +1,4 @@
-//! Terminal frontend. Navigation never changes a hardware profile. Mutations
-//! use the same backup, preflight, and verified transaction code as the CLI.
+//! Visual terminal frontend using the existing verified transaction backend.
 use crate::{
     device::{Board, Layer},
     operations::{self, Change},
@@ -10,18 +9,18 @@ use crate::{
 use anyhow::Result;
 use crossterm::{
     ExecutableCommand,
-    event::{self, Event, KeyCode, KeyEvent, KeyEventKind, KeyModifiers},
+    event::{self, DisableMouseCapture, EnableMouseCapture, Event, KeyCode, KeyModifiers},
     terminal::{EnterAlternateScreen, LeaveAlternateScreen, disable_raw_mode, enable_raw_mode},
 };
-use ratatui::{
-    prelude::*,
-    widgets::{Block, List, ListItem, ListState, Paragraph, Wrap},
-};
+use ratatui::prelude::*;
 use std::{io, path::Path, time::Duration};
-
+mod input;
+mod view;
+pub use view::{UiLayout, draw};
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum Mode {
     Browse,
+    Picker { query: String, selected: usize },
     Edit(String),
     Restore(String),
     Confirm(String),
@@ -47,179 +46,86 @@ pub struct UiState {
 }
 impl UiState {
     pub fn new(snapshot: Snapshot) -> Self {
-        Self{selected_profile:snapshot.active_profile,snapshot,selected_slot:0,layer:Layer::Base,mode:Mode::Browse,status:"Navigation previews profiles; press a to activate. All changes require confirmation.".into()}
+        Self{selected_profile:snapshot.active_profile,snapshot,selected_slot:0,layer:Layer::Base,mode:Mode::Browse,status:"Click a key to change its assignment. Profile tabs preview; Activate switches the board.".into()}
     }
     pub fn confirm(&mut self, s: String) {
         self.mode = Mode::Confirm(s);
     }
-    pub fn handle(&mut self, key: KeyEvent) -> Intent {
-        if key.kind == KeyEventKind::Release {
-            return Intent::None;
-        }
-        if key.modifiers.contains(KeyModifiers::CONTROL) && key.code == KeyCode::Char('c') {
-            return Intent::Quit;
-        }
-        match self.mode.clone() {
-            Mode::Confirm(_) => match key.code {
-                KeyCode::Char('y') | KeyCode::Char('Y') => {
-                    self.mode = Mode::Browse;
-                    Intent::Confirm(true)
-                }
-                KeyCode::Char('n') | KeyCode::Esc => {
-                    self.mode = Mode::Browse;
-                    Intent::Confirm(false)
-                }
-                _ => Intent::None,
-            },
-            Mode::Edit(mut value) | Mode::Restore(mut value) => {
-                let restore = matches!(self.mode, Mode::Restore(_));
-                match key.code {
-                    KeyCode::Esc => {
-                        self.mode = Mode::Browse;
-                        return Intent::None;
-                    }
-                    KeyCode::Enter => {
-                        self.mode = Mode::Browse;
-                        return if restore {
-                            Intent::Restore(value)
-                        } else {
-                            Intent::Remap(value)
-                        };
-                    }
-                    KeyCode::Backspace => {
-                        value.pop();
-                    }
-                    KeyCode::Char(c) if !key.modifiers.contains(KeyModifiers::CONTROL) => {
-                        value.push(c)
-                    }
-                    _ => {}
-                }
-                self.mode = if restore {
-                    Mode::Restore(value)
-                } else {
-                    Mode::Edit(value)
-                };
-                Intent::None
-            }
-            Mode::Browse => match key.code {
-                KeyCode::Char('q') | KeyCode::Esc => Intent::Quit,
-                KeyCode::Up | KeyCode::Char('k') => {
-                    self.selected_slot = self.selected_slot.wrapping_sub(1) & 127;
-                    Intent::None
-                }
-                KeyCode::Down | KeyCode::Char('j') => {
-                    self.selected_slot = (self.selected_slot + 1) & 127;
-                    Intent::None
-                }
-                KeyCode::Left => {
-                    self.selected_profile = (self.selected_profile + 3) % 4;
-                    Intent::None
-                }
-                KeyCode::Right => {
-                    self.selected_profile = (self.selected_profile + 1) % 4;
-                    Intent::None
-                }
-                KeyCode::Tab => {
-                    self.layer = match self.layer {
-                        Layer::Base => Layer::FnWin,
-                        Layer::FnWin => Layer::FnMac,
-                        Layer::FnMac => Layer::Base,
-                    };
-                    Intent::None
-                }
-                KeyCode::Char('e') | KeyCode::Enter => {
-                    let value = self
-                        .snapshot
-                        .profile(self.selected_profile)
-                        .map(|p| {
-                            operations::entries(p, self.layer)[self.selected_slot as usize].label()
-                        })
-                        .unwrap_or_default();
-                    self.mode = Mode::Edit(value);
-                    Intent::None
-                }
-                KeyCode::Char('r') => {
-                    self.mode = Mode::Restore(String::new());
-                    Intent::None
-                }
-                KeyCode::Char('s') => Intent::Swap,
-                KeyCode::Char('b') => Intent::Backup,
-                KeyCode::Char('a') => Intent::Activate,
-                _ => Intent::None,
-            },
-        }
+    pub fn current_action(&self) -> Action {
+        self.snapshot
+            .profile(self.selected_profile)
+            .map(|p| operations::entries(p, self.layer)[self.selected_slot as usize])
+            .unwrap_or(Action::DISABLED)
+    }
+    pub fn open_picker(&mut self) {
+        let action = self.current_action();
+        let selected = picker_items("")
+            .iter()
+            .position(|p| p.action == action || p.action.label() == action.label())
+            .unwrap_or(0);
+        self.mode = Mode::Picker {
+            query: String::new(),
+            selected,
+        };
     }
 }
-pub fn draw(f: &mut Frame, s: &UiState) {
-    let chunks = Layout::vertical([
-        Constraint::Length(3),
-        Constraint::Min(4),
-        Constraint::Length(4),
-        Constraint::Length(4),
-    ])
-    .split(f.area());
-    let header = format!(
-        "Air 01  |  active: {}  |  viewing: {}  |  layer: {}",
-        s.snapshot.active_profile, s.selected_profile, s.layer
-    );
-    f.render_widget(
-        Paragraph::new(header)
-            .block(Block::bordered().title(" air01 "))
-            .style(Style::default().fg(Color::Cyan)),
-        chunks[0],
-    );
-    let items = s
-        .snapshot
-        .profile(s.selected_profile)
-        .map(|p| {
-            operations::entries(p, s.layer)
-                .iter()
-                .enumerate()
-                .map(|(i, a)| {
-                    let physical = match i {
-                        5 => " [physical Fn]",
-                        11 => " [physical LeftCtrl]",
-                        _ => "",
-                    };
-                    ListItem::new(format!(
-                        "{i:3}{physical:21} {:23} {:02x}:{:02x}:{:02x}:{:02x}",
-                        a.label(),
-                        a.0[0],
-                        a.0[1],
-                        a.0[2],
-                        a.0[3]
-                    ))
-                })
-                .collect::<Vec<_>>()
-        })
-        .unwrap_or_default();
-    let list = List::new(items)
-        .block(Block::bordered().title(" Matrix slots / assigned action / raw bytes "))
-        .highlight_style(Style::default().bg(Color::DarkGray).fg(Color::White))
-        .highlight_symbol("> ");
-    let mut state = ListState::default().with_selected(Some(s.selected_slot as usize));
-    f.render_stateful_widget(list, chunks[1], &mut state);
-    let prompt = match &s.mode {
-        Mode::Browse => s.status.clone(),
-        Mode::Edit(v) => format!(
-            "Action: {v}_  (key name, Fn, Disabled, raw:00:00:e0:00). Enter: plan, Esc: cancel"
-        ),
-        Mode::Restore(v) => {
-            format!("Restore snapshot absolute path: {v}_  Enter: plan, Esc: cancel")
+#[derive(Clone)]
+pub(crate) struct PickerItem {
+    pub label: String,
+    pub group: &'static str,
+    pub action: Action,
+}
+pub(crate) fn picker_items(query: &str) -> Vec<PickerItem> {
+    let mut items = vec![
+        PickerItem {
+            label: "Fn".into(),
+            group: "Keyboard",
+            action: Action::FN,
+        },
+        PickerItem {
+            label: "Disabled".into(),
+            group: "Keyboard",
+            action: Action::DISABLED,
+        },
+        PickerItem {
+            label: "Toggle lighting".into(),
+            group: "Keyboard",
+            action: Action([10, 9, 0, 0]),
+        },
+    ];
+    for code in (224..=231).chain(4..=82) {
+        let label = crate::protocol::usage_label(code);
+        if label.starts_with("HID:") {
+            continue;
         }
-        Mode::Confirm(v) => format!("{v}\nApply? y = yes; n / Esc = cancel"),
-    };
-    f.render_widget(
-        Paragraph::new(prompt)
-            .wrap(Wrap { trim: false })
-            .block(Block::bordered().title(" Status ")),
-        chunks[2],
-    );
-    f.render_widget(Paragraph::new("↑/↓ select  ←/→ preview profile  Tab layer  e edit  s Ctrl/Fn swap\na activate profile  b backup  r restore  q quit  Ctrl+C always exits").block(Block::bordered()),chunks[3]);
+        items.push(PickerItem {
+            label,
+            group: if code >= 224 {
+                "Modifier"
+            } else if (58..=69).contains(&code) {
+                "Function"
+            } else {
+                "Key"
+            },
+            action: Action([0, 0, code, 0]),
+        });
+    }
+    let query = query.to_lowercase();
+    items
+        .into_iter()
+        .filter(|p| p.label.to_lowercase().contains(&query))
+        .collect()
+}
+pub(crate) fn raw_action(a: Action) -> String {
+    format!(
+        "raw:{:02x}:{:02x}:{:02x}:{:02x}",
+        a.0[0], a.0[1], a.0[2], a.0[3]
+    )
 }
 struct TerminalGuard;
 impl Drop for TerminalGuard {
     fn drop(&mut self) {
+        let _ = io::stdout().execute(DisableMouseCapture);
         let _ = disable_raw_mode();
         let _ = io::stdout().execute(LeaveAlternateScreen);
         let _ = io::stdout().execute(crossterm::cursor::Show);
@@ -239,7 +145,9 @@ pub fn run<W: Wire>(board: &mut Board<W>) -> Result<()> {
     let mut pending: Option<Pending> = None;
     enable_raw_mode()?;
     let _guard = TerminalGuard;
-    io::stdout().execute(EnterAlternateScreen)?;
+    io::stdout()
+        .execute(EnterAlternateScreen)?
+        .execute(EnableMouseCapture)?;
     let mut terminal = Terminal::new(CrosstermBackend::new(io::stdout()))?;
     terminal.clear()?;
     loop {
@@ -247,10 +155,27 @@ pub fn run<W: Wire>(board: &mut Board<W>) -> Result<()> {
         if !event::poll(Duration::from_millis(200))? {
             continue;
         }
-        let Event::Key(key) = event::read()? else {
-            continue;
+        let size = terminal.size()?;
+        let area = Rect::new(0, 0, size.width, size.height);
+        let intent = match event::read()? {
+            Event::Key(key) => {
+                if area.width < 80 || area.height < 24 {
+                    if key.code == KeyCode::Char('q')
+                        || key.code == KeyCode::Esc
+                        || (key.code == KeyCode::Char('c')
+                            && key.modifiers.contains(KeyModifiers::CONTROL))
+                    {
+                        Intent::Quit
+                    } else {
+                        Intent::None
+                    }
+                } else {
+                    ui.handle(key)
+                }
+            }
+            Event::Mouse(mouse) => ui.handle_mouse(mouse, area),
+            _ => Intent::None,
         };
-        let intent = ui.handle(key);
         if intent == Intent::Quit {
             break;
         }

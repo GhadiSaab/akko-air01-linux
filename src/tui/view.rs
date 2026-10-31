@@ -1,0 +1,536 @@
+use super::{Mode, UiState, picker_items};
+use crate::{device::Layer, keyboard, operations, protocol::Action};
+use ratatui::{
+    prelude::*,
+    widgets::{Block, BorderType, Borders, Clear, Paragraph, Wrap},
+};
+const BG: Color = Color::Rgb(10, 15, 24);
+const PANEL: Color = Color::Rgb(16, 23, 35);
+const TEXT: Color = Color::Rgb(220, 229, 243);
+const DIM: Color = Color::Rgb(125, 144, 169);
+const MINT: Color = Color::Rgb(94, 234, 212);
+const GOLD: Color = Color::Rgb(251, 191, 84);
+const BORDER: Color = Color::Rgb(57, 73, 96);
+#[derive(Clone, Copy, Debug)]
+pub enum UiButton {
+    Backup,
+    Restore,
+    Swap,
+    Quit,
+}
+pub struct UiLayout {
+    pub keyboard: Rect,
+    pub large: bool,
+    pub profile_tabs: Vec<(u8, Rect)>,
+    pub layer_tabs: Vec<(Layer, Rect)>,
+    pub activate: Rect,
+    pub buttons: Vec<(UiButton, Rect)>,
+    board: Rect,
+    detail: Rect,
+    footer: Rect,
+}
+impl UiLayout {
+    pub fn new(area: Rect) -> Self {
+        let large = area.height >= 34 && area.width >= 100;
+        let board_height = if large { 21 } else { 15 };
+        let board = Rect::new(
+            area.x,
+            area.y + 3,
+            area.width,
+            board_height.min(area.height.saturating_sub(3)),
+        );
+        let keyboard = board.inner(Margin::new(1, 1));
+        let detail = Rect::new(
+            area.x,
+            board.bottom(),
+            area.width,
+            area.height.saturating_sub(6 + board.height),
+        );
+        let footer = Rect::new(
+            area.x,
+            area.bottom().saturating_sub(3),
+            area.width,
+            3.min(area.height),
+        );
+        let profile_tabs = (0..4)
+            .map(|p| {
+                (
+                    p,
+                    Rect::new(area.x + 9 + u16::from(p) * 6, area.y + 1, 5, 1),
+                )
+            })
+            .collect();
+        let layer_tabs = vec![
+            (Layer::Base, Rect::new(area.x + 42, area.y + 1, 7, 1)),
+            (Layer::FnWin, Rect::new(area.x + 49, area.y + 1, 8, 1)),
+            (Layer::FnMac, Rect::new(area.x + 57, area.y + 1, 8, 1)),
+        ];
+        let activate = Rect::new(area.right().saturating_sub(13), area.y + 1, 12, 1);
+        let buttons = vec![
+            (UiButton::Backup, Rect::new(area.x, footer.y + 1, 10, 1)),
+            (
+                UiButton::Restore,
+                Rect::new(area.x + 12, footer.y + 1, 11, 1),
+            ),
+            (UiButton::Swap, Rect::new(area.x + 25, footer.y + 1, 14, 1)),
+            (UiButton::Quit, Rect::new(area.x + 41, footer.y + 1, 10, 1)),
+        ];
+        Self {
+            keyboard,
+            large,
+            profile_tabs,
+            layer_tabs,
+            activate,
+            buttons,
+            board,
+            detail,
+            footer,
+        }
+    }
+}
+fn button(f: &mut Frame, area: Rect, text: &str, selected: bool) {
+    f.render_widget(
+        Paragraph::new(text)
+            .alignment(Alignment::Center)
+            .style(if selected {
+                Style::default().bg(Color::Rgb(24, 64, 59)).fg(MINT).bold()
+            } else {
+                Style::default().bg(PANEL).fg(DIM)
+            }),
+        area,
+    );
+}
+fn action_label(a: Action) -> String {
+    if a == Action([10, 9, 0, 0]) {
+        "Toggle lighting".into()
+    } else {
+        a.label()
+    }
+}
+fn short(text: &str, width: u16) -> String {
+    let text = match text {
+        "LeftCtrl" | "RightCtrl" => "Ctrl",
+        "LeftShift" | "RightShift" => "Shift",
+        "LeftAlt" | "RightAlt" => "Alt",
+        "LeftMeta" | "RightMeta" => "Win",
+        "Disabled" => "—",
+        "Toggle lighting" => "☼",
+        "Light" => "☼",
+        "Escape" => "Esc",
+        "Backspace" => "Bksp",
+        "CapsLock" => "Caps",
+        "PageUp" => "PgUp",
+        "PageDown" => "PgDn",
+        "PrintScreen" => "Prt",
+        "Insert" => "Ins",
+        "Delete" => "Del",
+        "LeftBracket" => "[",
+        "RightBracket" => "]",
+        "Backslash" => "\\",
+        "Semicolon" => ";",
+        "Apostrophe" => "'",
+        "Grave" => "`",
+        "Comma" => ",",
+        "Period" => ".",
+        "Slash" => "/",
+        "Minus" => "-",
+        "Equal" => "=",
+        "Up" => "↑",
+        "Down" => "↓",
+        "Left" => "←",
+        "Right" => "→",
+        _ => text,
+    };
+    if width < 3 {
+        match text {
+            "Ctrl" => "Ct",
+            "Shift" => "Sh",
+            "Opt" => "Op",
+            "Cmd" => "⌘",
+            "Caps" => "Cp",
+            "Light" => "☼",
+            "Tab" => "Tb",
+            "Esc" => "Es",
+            "F10" => "10",
+            "F11" => "11",
+            "F12" => "12",
+            "PgUp" => "PU",
+            "PgDn" => "PD",
+            "Home" => "Hm",
+            "End" => "En",
+            "Ins" => "In",
+            "Prt" => "Pr",
+            _ => text,
+        }
+        .chars()
+        .take(width as usize)
+        .collect()
+    } else if text.starts_with("raw:") || text.starts_with("HID:") {
+        "?".into()
+    } else {
+        text.chars().take(width as usize).collect()
+    }
+}
+fn effective(s: &UiState, slot: u8) -> (Action, bool) {
+    let Ok(p) = s.snapshot.profile(s.selected_profile) else {
+        return (Action::DISABLED, false);
+    };
+    let raw = operations::entries(p, s.layer)[slot as usize];
+    let inherited = s.layer != Layer::Base && raw == Action::DISABLED;
+    (
+        if inherited {
+            p.base[slot as usize]
+        } else {
+            raw
+        },
+        inherited,
+    )
+}
+pub fn draw(f: &mut Frame, s: &UiState) {
+    let area = f.area();
+    f.render_widget(Block::new().style(Style::default().bg(BG).fg(TEXT)), area);
+    if area.width < 80 || area.height < 24 {
+        f.render_widget(
+            Paragraph::new("Resize terminal to at least 80×24.\nq quit")
+                .style(Style::default().fg(GOLD))
+                .wrap(Wrap { trim: false }),
+            area,
+        );
+        return;
+    }
+    let g = UiLayout::new(area);
+    f.render_widget(
+        Paragraph::new(Line::from(vec![
+            Span::styled(" air01 ", Style::default().fg(MINT).bold()),
+            Span::styled(
+                format!(
+                    " / AKKO AIR 01    active: {}    viewing: {}",
+                    s.snapshot.active_profile, s.selected_profile
+                ),
+                Style::default().fg(TEXT),
+            ),
+            Span::styled("    USB", Style::default().fg(DIM)),
+        ])),
+        Rect::new(area.x, area.y, area.width, 1),
+    );
+    f.render_widget(
+        Paragraph::new(" PROFILE").style(Style::default().fg(DIM)),
+        Rect::new(area.x, area.y + 1, 9, 1),
+    );
+    for (p, r) in &g.profile_tabs {
+        button(
+            f,
+            *r,
+            &format!(
+                " {p}{} ",
+                if *p == s.snapshot.active_profile {
+                    "*"
+                } else {
+                    " "
+                }
+            ),
+            *p == s.selected_profile,
+        );
+    }
+    f.render_widget(
+        Paragraph::new("LAYER").style(Style::default().fg(DIM)),
+        Rect::new(area.x + 35, area.y + 1, 6, 1),
+    );
+    for (layer, r) in &g.layer_tabs {
+        button(
+            f,
+            *r,
+            match layer {
+                Layer::Base => "Base",
+                Layer::FnWin => "Win Fn",
+                Layer::FnMac => "Mac Fn",
+            },
+            *layer == s.layer,
+        );
+    }
+    button(f, g.activate, "Activate [a]", false);
+    f.render_widget(
+        Block::bordered()
+            .border_type(BorderType::Rounded)
+            .border_style(Style::default().fg(BORDER))
+            .style(Style::default().bg(PANEL))
+            .title(Line::from(" AKKO AIR 01 · click a key ").style(Style::default().fg(DIM))),
+        g.board,
+    );
+    for (slot, r) in keyboard::rectangles(g.keyboard, g.large) {
+        let Some(k) = keyboard::key(slot) else {
+            continue;
+        };
+        let (a, inherited) = effective(s, slot);
+        let changed = if s.layer == Layer::Base {
+            a.label() != k.default.label()
+        } else {
+            !inherited
+        };
+        let selected = slot == s.selected_slot;
+        let border = if selected {
+            MINT
+        } else if changed {
+            GOLD
+        } else {
+            BORDER
+        };
+        let bg = if selected {
+            Color::Rgb(23, 58, 55)
+        } else {
+            Color::Rgb(23, 32, 47)
+        };
+        let block = Block::bordered()
+            .border_type(BorderType::Rounded)
+            .border_style(Style::default().fg(border))
+            .style(Style::default().bg(bg));
+        let inner = block.inner(r);
+        f.render_widget(block, r);
+        let legend = short(k.legend, inner.width);
+        if g.large {
+            let assigned = if changed {
+                format!(
+                    "→{}",
+                    short(&action_label(a), inner.width.saturating_sub(1))
+                )
+            } else if inherited {
+                "·".into()
+            } else {
+                String::new()
+            };
+            let text = Text::from(vec![
+                Line::from(Span::styled(
+                    legend,
+                    Style::default()
+                        .fg(if selected { MINT } else { TEXT })
+                        .bold(),
+                )),
+                Line::from(Span::styled(
+                    assigned,
+                    Style::default().fg(if changed { GOLD } else { DIM }),
+                )),
+            ]);
+            f.render_widget(Paragraph::new(text).alignment(Alignment::Center), inner);
+        } else {
+            let face = if changed {
+                short(&action_label(a), inner.width)
+            } else {
+                legend
+            };
+            f.render_widget(
+                Paragraph::new(face).alignment(Alignment::Center).style(
+                    Style::default()
+                        .fg(if selected {
+                            MINT
+                        } else if changed {
+                            GOLD
+                        } else {
+                            TEXT
+                        })
+                        .bold(),
+                ),
+                inner,
+            );
+        }
+    }
+    let (a, inherited) = effective(s, s.selected_slot);
+    let name = keyboard::key(s.selected_slot).map_or("Key", |k| k.legend);
+    let detail = if g.detail.height >= 5 {
+        let block = Block::new()
+            .borders(Borders::BOTTOM)
+            .border_style(Style::default().fg(BORDER));
+        let inner = block.inner(g.detail);
+        f.render_widget(block, g.detail);
+        inner
+    } else {
+        g.detail
+    };
+    let current = if inherited {
+        format!("inherits {}", action_label(a))
+    } else {
+        action_label(a)
+    };
+    let text = vec![
+        Line::from(vec![
+            Span::styled(format!(" {name} "), Style::default().fg(MINT).bold()),
+            Span::raw(format!("→ {current}    ")),
+            Span::styled(
+                format!(
+                    "profile {} · {} · slot {}",
+                    s.selected_profile, s.layer, s.selected_slot
+                ),
+                Style::default().fg(DIM),
+            ),
+        ]),
+        Line::from(Span::styled(
+            format!(" {}", s.status),
+            Style::default().fg(DIM),
+        )),
+    ];
+    f.render_widget(Paragraph::new(text).wrap(Wrap { trim: false }), detail);
+    f.render_widget(
+        Paragraph::new("↑↓←→ move   Enter edit   PgUp/PgDn profile   Tab layer   amber = remapped")
+            .style(Style::default().fg(DIM)),
+        Rect::new(g.footer.x, g.footer.y, g.footer.width, 1),
+    );
+    for (b, r) in &g.buttons {
+        button(
+            f,
+            *r,
+            match b {
+                UiButton::Backup => "b Backup",
+                UiButton::Restore => "r Restore",
+                UiButton::Swap => "s Ctrl/Fn swap",
+                UiButton::Quit => "q quit",
+            },
+            false,
+        );
+    }
+    match &s.mode {
+        Mode::Browse => {}
+        Mode::Picker { query, selected } => draw_picker(f, s, query, *selected),
+        Mode::Confirm(text) => {
+            let p = confirm_popup(area);
+            popup_frame(f, p, " Confirm keyboard changes ");
+            let body = Rect::new(p.x + 2, p.y + 2, p.width - 4, p.height - 5);
+            f.render_widget(
+                Paragraph::new(text.as_str())
+                    .wrap(Wrap { trim: true })
+                    .style(Style::default().fg(TEXT)),
+                body,
+            );
+            let (apply, cancel) = confirm_buttons(area);
+            button(f, apply, "Apply [y]", true);
+            button(f, cancel, "Cancel [n]", false);
+        }
+        Mode::Edit(value) | Mode::Restore(value) => {
+            let p = confirm_popup(area);
+            popup_frame(
+                f,
+                p,
+                if matches!(s.mode, Mode::Edit(_)) {
+                    " Advanced assignment "
+                } else {
+                    " Restore keymap backup "
+                },
+            );
+            let message = if matches!(s.mode, Mode::Edit(_)) {
+                "Key name, Fn, Disabled, or raw:00:00:e0:00"
+            } else {
+                "Absolute path to the snapshot JSON"
+            };
+            f.render_widget(
+                Paragraph::new(format!(
+                    "{message}\n\n{value}_\n\nEnter: preview changes   Ctrl+U: clear   Esc: cancel"
+                ))
+                .wrap(Wrap { trim: false }),
+                Rect::new(p.x + 2, p.y + 2, p.width - 4, p.height - 3),
+            );
+        }
+    }
+}
+fn centered(area: Rect, width: u16, height: u16) -> Rect {
+    let w = width.min(area.width.saturating_sub(4));
+    let h = height.min(area.height.saturating_sub(2));
+    Rect::new(
+        area.x + (area.width - w) / 2,
+        area.y + (area.height - h) / 2,
+        w,
+        h,
+    )
+}
+pub(crate) fn picker_popup(area: Rect) -> Rect {
+    centered(area, 64, 20)
+}
+pub(crate) fn picker_list(area: Rect) -> Rect {
+    let p = picker_popup(area);
+    Rect::new(
+        p.x + 2,
+        p.y + 6,
+        p.width.saturating_sub(4),
+        p.height.saturating_sub(9),
+    )
+}
+pub(crate) fn picker_start(selected: usize, height: u16) -> usize {
+    selected.saturating_sub(usize::from(height.saturating_sub(1)))
+}
+pub(crate) fn confirm_popup(area: Rect) -> Rect {
+    centered(area, 72, 11)
+}
+pub(crate) fn confirm_buttons(area: Rect) -> (Rect, Rect) {
+    let p = confirm_popup(area);
+    (
+        Rect::new(p.x + p.width - 28, p.bottom() - 3, 12, 1),
+        Rect::new(p.x + p.width - 14, p.bottom() - 3, 12, 1),
+    )
+}
+fn popup_frame(f: &mut Frame, area: Rect, title: &str) {
+    f.render_widget(Clear, area);
+    f.render_widget(
+        Block::bordered()
+            .border_type(BorderType::Rounded)
+            .border_style(Style::default().fg(MINT))
+            .style(Style::default().bg(PANEL).fg(TEXT))
+            .title(title),
+        area,
+    );
+}
+fn draw_picker(f: &mut Frame, s: &UiState, query: &str, selected: usize) {
+    let area = f.area();
+    let p = picker_popup(area);
+    let name = keyboard::key(s.selected_slot).map_or("key", |k| k.legend);
+    popup_frame(f, p, &format!(" Assign {name} "));
+    f.render_widget(
+        Paragraph::new(format!(
+            "Profile {} · {} · currently {}",
+            s.selected_profile,
+            s.layer,
+            action_label(s.current_action())
+        ))
+        .style(Style::default().fg(DIM)),
+        Rect::new(p.x + 2, p.y + 1, p.width - 4, 1),
+    );
+    f.render_widget(
+        Paragraph::new(format!("Search: {query}_"))
+            .style(Style::default().fg(MINT))
+            .block(Block::bordered().border_style(Style::default().fg(BORDER))),
+        Rect::new(p.x + 2, p.y + 3, p.width - 4, 3),
+    );
+    let list = picker_list(area);
+    let items = picker_items(query);
+    let start = picker_start(selected, list.height);
+    if items.is_empty() {
+        f.render_widget(
+            Paragraph::new("No assignments match. Ctrl+U clears the search.")
+                .style(Style::default().fg(GOLD)),
+            list,
+        );
+    }
+    for (i, item) in items
+        .iter()
+        .enumerate()
+        .skip(start)
+        .take(list.height as usize)
+    {
+        let r = Rect::new(list.x, list.y + (i - start) as u16, list.width, 1);
+        let label = format!(
+            " {} {:32} {}",
+            if i == selected { "›" } else { " " },
+            item.label,
+            item.group
+        );
+        f.render_widget(
+            Paragraph::new(label).style(if i == selected {
+                Style::default().bg(Color::Rgb(24, 64, 59)).fg(MINT).bold()
+            } else {
+                Style::default().fg(TEXT)
+            }),
+            r,
+        );
+    }
+    f.render_widget(
+        Paragraph::new("Click / Enter choose   ↑↓ navigate   F2 raw   Esc cancel")
+            .style(Style::default().fg(DIM)),
+        Rect::new(p.x + 2, p.bottom() - 2, p.width - 4, 1),
+    );
+}
