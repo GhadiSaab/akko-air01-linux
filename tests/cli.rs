@@ -33,3 +33,27 @@ fn malformed_snapshot_is_rejected_without_touching_hardware() {
     assert!(!o.status.success());
     assert!(String::from_utf8(o.stderr).unwrap().contains("snapshot"));
 }
+#[test]
+fn dry_run_cannot_enter_a_writable_tui() {
+    let o = cli(&["--device", "/nonexistent", "--dry-run", "tui"]);
+    assert!(!o.status.success());
+    assert!(
+        String::from_utf8(o.stderr)
+            .unwrap()
+            .contains("dry-run is not supported with tui")
+    );
+}
+#[test]
+fn dry_run_backup_creates_no_file_and_needs_no_hardware() {
+    let d = tempfile::tempdir().unwrap();
+    let p = d.path().join("backup.json");
+    let o = cli(&[
+        "--device",
+        "/nonexistent",
+        "--dry-run",
+        "backup",
+        p.to_str().unwrap(),
+    ]);
+    assert!(o.status.success());
+    assert!(!p.exists());
+}

@@ -33,6 +33,8 @@ struct Cli {
 enum Command {
     /// List vendor settings interfaces; does not write to devices.
     Devices,
+    /// Open the terminal interface.
+    Tui,
     /// Identify the wired board and its active profile.
     Info,
     /// Inspect all four profiles and locate the Fn/Ctrl assignments.
@@ -143,6 +145,25 @@ fn run(cli: Cli) -> Result<()> {
         }
         return Ok(());
     }
+    if matches!(cli.command, Command::Tui) {
+        anyhow::ensure!(
+            !cli.dry_run,
+            "dry-run is not supported with tui; use CLI commands to preview changes"
+        );
+        anyhow::ensure!(
+            cli.profile.is_none() && !cli.allow_no_fn,
+            "select profiles and edit Fn from inside the TUI"
+        );
+    }
+    if cli.dry_run
+        && let Command::Backup { ref path } = cli.command
+    {
+        println!(
+            "Dry run: would read all profiles and save {}; no file created.",
+            path.display()
+        );
+        return Ok(());
+    }
     // File validation happens before hardware discovery or I/O.
     let restore = if let Command::Restore { ref path, .. } = cli.command {
         Some(operations::load_snapshot(path).context("invalid restore snapshot")?)
@@ -152,6 +173,7 @@ fn run(cli: Cli) -> Result<()> {
     let mut b = open(cli.device.as_deref())?;
     match &cli.command {
         Command::Devices => unreachable!(),
+        Command::Tui => return air01::tui::run(&mut b),
         Command::Info => {
             let active = b.active_profile()?;
             println!(
