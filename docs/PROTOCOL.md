@@ -70,3 +70,24 @@ red. They subsequently requested solid pink `#FF69B4`; it remains applied.
 The Air01 palette indices are red, green, blue, orange `FF5500`, purple
 `7700FF`, yellow and white. Index selection overrides otherwise-unused RGB bytes.
 Raw snapshots preserve wire values exactly and are never silently converted.
+
+## Per-key animation (light mode 25)
+
+The vendor Gen2 serializer (`setUserGifStart`/`setUserGif`,
+`js/4abb36b7.js`) uploads a frame sequence that the firmware plays itself as
+`LightUserColor`, mode 25. The Air01 vendor record does not list this mode, but
+device 3013 firmware 1.10 accepted and read back `19 00 04 08 FF 55 00`, and the
+uploaded frames were displayed (verified on hardware by eye).
+
+| step | Bit7 packet bytes 0..6 | data |
+|---|---|---|
+| start | `12 00 00 00 00 00 00` | none; wait 500 ms |
+| frame page | `12 frame page 01 count delay_lo delay_hi` | 56 RGB bytes at 8.. |
+
+Each frame is seven pages: 128 RGB triples in matrix-slot order (the keymap
+slot numbers), zero padded to 392 bytes. Frame index and count are bytes, so at
+most 255 frames. Delay is a little-endian u16 per frame; air01 uses one value
+for all frames and repeats frames for pauses. The vendor paces pages 5 ms apart;
+air01 uses 10 ms. There is no read command for the frames. Note that
+monsgeek-akko-linux names `0x18` "SET_USERGIFSTART"; for this family the vendor
+code sends `0x12` with byte 3 = 0 instead, and that is what air01 sends.

@@ -133,6 +133,7 @@ impl Wire for MemoryWire {
             }
             0x07 => s.lighting = p[2..9].try_into().unwrap(),
             0x04 => s.snapshot.active_profile = p[2],
+            0x12 => {}
             _ => bail!("unexpected fake write {:x}", p[1]),
         }
         Ok(())

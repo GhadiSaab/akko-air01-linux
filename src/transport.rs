@@ -144,7 +144,7 @@ impl Wire for HidWire {
     }
     fn send(&mut self, p: [u8; 65]) -> Result<()> {
         ensure!(
-            p[0] == 0 && [0x0a, 0x10, 0x04, 0x07].contains(&p[1]),
+            p[0] == 0 && [0x0a, 0x10, 0x04, 0x07, 0x12].contains(&p[1]),
             "unsupported write opcode or report ID"
         );
         ensure!(

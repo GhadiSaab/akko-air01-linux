@@ -101,9 +101,109 @@ enum LightCommand {
     Restore {
         path: PathBuf,
     },
+    /// Store a scrolling text animation on the keyboard (light mode 25).
+    Marquee {
+        /// Text to scroll: A-Z, 0-9, space, - or !.
+        #[arg(default_value = "CLAUDE")]
+        text: String,
+        #[arg(long, value_parser=air01::lighting::parse_color, default_value = "#FF5500")]
+        color: [u8; 3],
+        #[arg(long, value_enum, default_value = "right")]
+        direction: air01::animation::Direction,
+        /// letters: one big letter at a time; scroll: one continuous banner.
+        #[arg(long, value_enum, default_value = "letters")]
+        style: air01::animation::Style,
+        /// Milliseconds each frame (one column step) is shown.
+        #[arg(long, default_value_t = 60, value_parser=clap::value_parser!(u16).range(1..))]
+        delay_ms: u16,
+        /// Pause on each centered letter in the letters style.
+        #[arg(long, default_value_t = 700)]
+        hold_ms: u16,
+        #[arg(long, value_parser=clap::value_parser!(u8).range(0..5))]
+        brightness: Option<u8>,
+        /// Print the frames as text instead of touching the keyboard.
+        #[arg(long)]
+        preview: bool,
+    },
+}
+fn marquee_cli(cli: &Cli, cmd: &LightCommand) -> Result<()> {
+    use air01::{animation, lighting};
+    let LightCommand::Marquee {
+        text,
+        color,
+        direction,
+        style,
+        delay_ms,
+        hold_ms,
+        brightness,
+        preview,
+    } = cmd
+    else {
+        unreachable!()
+    };
+    let anim = animation::marquee(
+        text,
+        animation::Marquee {
+            color: *color,
+            direction: *direction,
+            style: *style,
+            delay_ms: *delay_ms,
+            hold_ms: *hold_ms,
+        },
+    )?;
+    if *preview {
+        for (i, f) in anim.frames.iter().enumerate() {
+            println!("frame {i}");
+            print!("{}", animation::render_ascii(f));
+        }
+        return Ok(());
+    }
+    let mut b = open(cli.device.as_deref())?;
+    let before = lighting::read(&mut b)?;
+    if let Some(profile) = cli.profile {
+        anyhow::ensure!(
+            profile == before.profile,
+            "lighting controls the active profile {}; activate the desired profile first",
+            before.profile
+        );
+    }
+    let target =
+        animation::lighting_for(*color, brightness.unwrap_or(before.lighting.brightness()))?;
+    println!(
+        "Profile {}: {} {} → marquee {text:?} {} | {} frames × {delay_ms} ms | brightness {}",
+        before.profile,
+        before.lighting.effect(),
+        before.lighting.hex(),
+        target.hex(),
+        anim.frames.len(),
+        target.brightness()
+    );
+    if cli.dry_run {
+        println!(
+            "Dry run: would send {} reports, then select mode {}; no writes.",
+            1 + anim.frames.len() * animation::PAGES as usize,
+            animation::MODE
+        );
+        return Ok(());
+    }
+    let up = animation::upload(&mut b, &before, &anim, target)?;
+    println!(
+        "Uploaded {} reports; mode {} selected and read back. Previous lighting backup: {}",
+        up.packets,
+        animation::MODE,
+        up.backup.display()
+    );
+    println!(
+        "Restore it with: air01 lighting restore {}",
+        up.backup.display()
+    );
+    Ok(())
 }
 fn lighting_cli(cli: &Cli, cmd: &LightCommand) -> Result<()> {
     use air01::lighting::{self, Lighting};
+    if matches!(cmd, LightCommand::Marquee { .. }) {
+        return marquee_cli(cli, cmd);
+    }
     if matches!(cmd, LightCommand::Presets) {
         let report = lighting::library_report()?;
         for warning in report.warnings {

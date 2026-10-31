@@ -204,11 +204,33 @@ air01 lighting preset my-desk
 air01 lighting restore /absolute/path/to/lighting-backup.json
 ```
 
+### Onboard text animation
+
+`air01 lighting marquee` stores a per-key animation on the keyboard (light mode
+25) and plays it from the board's own memory, like the built-in effects. Nothing
+keeps running on the PC, and it keeps playing wirelessly once uploaded.
+
+```sh
+air01 lighting marquee --preview | less      # print every frame, no USB access
+air01 --dry-run lighting marquee             # CLAUDE in orange #FF5500
+air01 lighting marquee                       # one big letter at a time, left → right
+air01 lighting marquee CLAUDE --style scroll --direction left --delay-ms 90
+air01 lighting marquee HELLO --color '#5EEAD4' --hold-ms 400 --brightness 3
+```
+
+Letters use a bold 5×5 font on the function row through the bottom letter row.
+The default `letters` style slides each letter in from the left, pauses it in the
+middle (`--hold-ms`) and slides it out to the right; `scroll` moves the whole
+text as one banner. The board holds at most 255 frames. The upload saves the
+previous lighting as a backup and prints its `lighting restore` command. Frames
+cannot be read back, so only the mode selection is verified; check the result by
+eye.
+
 Brightness and speed range from 0 to 4. Effect IDs are listed in the [protocol notes](docs/PROTOCOL.md). Lighting backups are private
 versioned JSON in `~/.local/state/air01/lighting-backups`, saved presets in
 `~/.local/state/air01/themes` (or the equivalent under `$XDG_STATE_HOME`). They
 are separate from keymap snapshots. Restore requires the backup's profile to
-be active; it never silently switches profiles. Global RGB/effects are supported;
+be active; it never silently switches profiles. Global RGB/effects and the onboard text animation are supported;
 per-key painting, host-fed screen/music sync and side lighting are not included.
 
 ## Validation and development
