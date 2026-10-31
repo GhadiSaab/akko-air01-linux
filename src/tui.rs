@@ -328,10 +328,16 @@ pub fn run<W: Wire>(board: &mut Board<W>) -> Result<()> {
                     if let Some(p) = pending.take() {
                         ui.status = "Saving backup and applying verified changes…".into();
                         terminal.draw(|f| draw(f, &ui))?;
-                        let backup = operations::auto_backup(&p.snapshot)?;
+                        let planned_changes = match &p.kind {
+                            PendingKind::Keys(changes) => changes.as_slice(),
+                            PendingKind::Profile(_) => &[],
+                        };
+                        let fresh =
+                            operations::fresh_for_plan(board, &p.snapshot, planned_changes)?;
+                        let backup = operations::auto_backup(&fresh)?;
                         let operation = match p.kind {
                             PendingKind::Keys(changes) => {
-                                operations::apply(board, &p.snapshot, &changes, false).map(|_| ())
+                                operations::apply(board, &fresh, &changes, false).map(|_| ())
                             }
                             PendingKind::Profile(pr) => {
                                 anyhow::ensure!(

@@ -1,0 +1,2 @@
+# Settings access for the tested wired Akko Air 01. No root GUI required.
+SUBSYSTEM=="hidraw", ATTRS{idVendor}=="3151", ATTRS{idProduct}=="5002", MODE="0660", TAG+="uaccess"

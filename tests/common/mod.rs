@@ -15,6 +15,7 @@ pub struct State {
     pub writes: Vec<[u8; 65]>,
     pub fail_at: Option<usize>,
     pub fail_from: Option<usize>,
+    pub fail_page_after_write: Option<usize>,
     pub ignore_at: Option<usize>,
     pub always_ignore: bool,
 }
@@ -44,6 +45,7 @@ impl MemoryWire {
             writes: vec![],
             fail_at: None,
             fail_from: None,
+            fail_page_after_write: None,
             ignore_at: None,
             always_ignore: false,
         })))
@@ -51,7 +53,11 @@ impl MemoryWire {
 }
 impl Wire for MemoryWire {
     fn query(&mut self, op: u8, args: &[u8]) -> Result<[u8; 64]> {
-        let s = self.0.borrow();
+        let mut s = self.0.borrow_mut();
+        if op == 0x8a && s.fail_page_after_write == Some(s.writes.len()) {
+            s.fail_page_after_write = None;
+            bail!("transient page read failure after landed write");
+        }
         let mut r = [0; 64];
         match op {
             0x8f => {

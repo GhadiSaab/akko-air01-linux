@@ -1,0 +1,18 @@
+air01 — Copyright (C) 2026 air01 contributors
+License: GPL-3.0-or-later
+
+Protocol research and packet layouts were informed by:
+
+sharkfin, Copyright JR Lanteigne <root@dnim.dev> and contributors
+https://github.com/dniminenn/sharkfin
+Reference revision: a8d170918a977224e8f4b9bbefebb602b50f58aa
+GPL-3.0-or-later. In particular docs/PROTOCOL.md, src-tauri/src/protocol/gen2.rs,
+derive.rs and the verified operation/recovery design.
+
+MonsGeek/Akko Linux Driver, echtzeit-solutions and contributors
+https://github.com/echtzeit-solutions/monsgeek-akko-linux
+Reference revision: 79c45f11dcc0fdd24d6075a0f30f5dabbc748c9b
+GPL-3.0. Used as protocol and device-layout research; no firmware blobs are
+included in this project.
+
+No affiliation with or endorsement by Akko or the upstream projects.

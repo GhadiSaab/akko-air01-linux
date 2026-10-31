@@ -162,3 +162,52 @@ fn select_profile_is_verified_and_noop_does_not_write() {
     select_profile(&mut b, 1).unwrap();
     assert_eq!(b.active_profile().unwrap(), 1);
 }
+#[test]
+fn failed_fn_recovery_retains_replacement_instead_of_removing_last_fn() {
+    let w = MemoryWire::new();
+    let mut b = Board::connect(w.clone(), true).unwrap();
+    let s = b.snapshot().unwrap();
+    let plan = plan_swap(&s, &[2]).unwrap();
+    {
+        let mut state = w.0.borrow_mut();
+        state.fail_page_after_write = Some(2);
+        state.fail_at = Some(3);
+    }
+    let err = apply(&mut b, &s, &plan, false).unwrap_err().to_string();
+    assert!(err.contains("rollback INCOMPLETE"));
+    let actual = b.snapshot().unwrap();
+    assert!(
+        actual.profiles[2].base.contains(&Action::FN),
+        "rollback removed the last Fn: {err}"
+    );
+    assert_eq!(actual.profiles[2].base[11], Action::FN);
+}
+#[test]
+fn ui_backup_refresh_preserves_intervening_unrelated_bindings() {
+    let w = MemoryWire::new();
+    let mut b = Board::connect(w.clone(), true).unwrap();
+    let cached = b.snapshot().unwrap();
+    let plan = plan_swap(&cached, &[2]).unwrap();
+    w.0.borrow_mut().snapshot.profiles[1].base[90] = Action([0, 0, 69, 0]);
+    let fresh = fresh_for_plan(&mut b, &cached, &plan).unwrap();
+    let d = tempfile::tempdir().unwrap();
+    let p = d.path().join("fresh.json");
+    save_snapshot(&fresh, &p).unwrap();
+    assert_eq!(
+        load_snapshot(&p).unwrap().profiles[1].base[90],
+        Action([0, 0, 69, 0])
+    );
+    assert!(w.0.borrow().writes.is_empty());
+    w.0.borrow_mut().snapshot.profiles[2].base[11] = Action([0, 0, 4, 0]);
+    assert!(fresh_for_plan(&mut b, &cached, &plan).is_err());
+    assert!(w.0.borrow().writes.is_empty());
+}
+#[test]
+fn ui_refresh_rejects_changed_active_profile() {
+    let w = MemoryWire::new();
+    let mut b = Board::connect(w.clone(), true).unwrap();
+    let cached = b.snapshot().unwrap();
+    w.0.borrow_mut().snapshot.active_profile = 3;
+    assert!(fresh_for_plan(&mut b, &cached, &[]).is_err());
+    assert!(w.0.borrow().writes.is_empty());
+}

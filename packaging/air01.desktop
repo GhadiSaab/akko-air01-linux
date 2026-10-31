@@ -1,0 +1,9 @@
+[Desktop Entry]
+Type=Application
+Name=Air 01 Keyboard Configurator
+Comment=Inspect profiles, remap keys and back up the Akko Air 01
+Exec=air01 tui
+Icon=input-keyboard
+Terminal=true
+Categories=Settings;HardwareSettings;
+Keywords=Akko;Air01;keyboard;remap;

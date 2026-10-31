@@ -211,6 +211,19 @@ pub fn apply<W: Wire>(
                     now == c.after,
                     "slot changed externally; refusing to overwrite it"
                 );
+                if c.layer == Layer::Base
+                    && now == Action::FN
+                    && c.before != Action::FN
+                    && s.profile(c.profile)?.base.contains(&Action::FN)
+                {
+                    let live = b.matrix(c.profile, Layer::Base)?;
+                    ensure!(
+                        live.iter()
+                            .enumerate()
+                            .any(|(i, a)| i != c.slot as usize && *a == Action::FN),
+                        "retaining replacement Fn because another Fn could not be positively verified"
+                    );
+                }
                 write_verify(b, c, c.before)
             })();
             if let Err(e) = recovery {
@@ -302,4 +315,31 @@ pub fn auto_backup(s: &Snapshot) -> Result<PathBuf> {
     let path = dir.join(format!("air01-{stamp}.json"));
     save_snapshot(s, &path)?;
     Ok(path)
+}
+
+/// Refresh a long-lived UI plan before creating its automatic recovery snapshot.
+pub fn fresh_for_plan<W: Wire>(
+    board: &mut Board<W>,
+    expected: &Snapshot,
+    changes: &[Change],
+) -> Result<Snapshot> {
+    expected.validate()?;
+    let fresh = board.snapshot()?;
+    ensure!(
+        fresh.active_profile == expected.active_profile,
+        "active profile changed while confirmation was pending; read a new plan"
+    );
+    for c in changes {
+        check_profile(c.profile)?;
+        check_slot(c.slot)?;
+        ensure!(
+            entries(expected.profile(c.profile)?, c.layer)[c.slot as usize] == c.before,
+            "plan original value disagrees with cached snapshot"
+        );
+        ensure!(
+            entries(fresh.profile(c.profile)?, c.layer)[c.slot as usize] == c.before,
+            "target changed while confirmation was pending; read a new plan"
+        );
+    }
+    Ok(fresh)
 }
