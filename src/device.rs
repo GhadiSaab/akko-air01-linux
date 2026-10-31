@@ -99,15 +99,27 @@ impl<W: Wire> Board<W> {
         Ok(out)
     }
     pub fn snapshot(&mut self) -> Result<Snapshot> {
+        self.snapshot_with_progress(|_, _| Ok(()))
+    }
+    pub fn snapshot_with_progress(
+        &mut self,
+        mut progress: impl FnMut(u8, Layer) -> Result<()>,
+    ) -> Result<Snapshot> {
         self.check_identity()?;
         let active = self.active_profile()?;
         let mut profiles = Vec::with_capacity(4);
         for index in 0..4 {
+            progress(index, Layer::Base)?;
+            let base = self.matrix(index, Layer::Base)?;
+            progress(index, Layer::FnWin)?;
+            let fn_win = self.matrix(index, Layer::FnWin)?;
+            progress(index, Layer::FnMac)?;
+            let fn_mac = self.matrix(index, Layer::FnMac)?;
             profiles.push(ProfileSnapshot {
                 index,
-                base: self.matrix(index, Layer::Base)?,
-                fn_win: self.matrix(index, Layer::FnWin)?,
-                fn_mac: self.matrix(index, Layer::FnMac)?,
+                base,
+                fn_win,
+                fn_mac,
             });
         }
         ensure!(

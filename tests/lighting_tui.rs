@@ -135,3 +135,60 @@ fn error_notice_is_readable_and_closes_without_discarding_draft() {
     assert!(matches!(s.mode, air01::tui::Mode::Browse));
     assert_eq!(s.lighting.as_ref().unwrap().draft, draft);
 }
+#[test]
+fn lighting_read_failure_still_has_mouse_reload_and_help() {
+    let mut s = state();
+    s.lighting = None;
+    press(&mut s, KeyCode::Char('2'));
+    let area = Rect::new(0, 0, 80, 24);
+    let g = air01::tui::lighting::LightLayout::new(area);
+    let (_, r) = g.controls.iter().find(|(i, _)| *i == 13).unwrap();
+    let intent = s.handle_mouse(
+        MouseEvent {
+            kind: MouseEventKind::Down(MouseButton::Left),
+            column: r.x,
+            row: r.y,
+            modifiers: KeyModifiers::NONE,
+        },
+        area,
+    );
+    assert_eq!(intent, Intent::ReloadLighting);
+    press(&mut s, KeyCode::F(1));
+    let mut t = Terminal::new(TestBackend::new(80, 24)).unwrap();
+    t.draw(|f| draw(f, &s)).unwrap();
+    let text = t
+        .backend()
+        .buffer()
+        .content()
+        .iter()
+        .map(|c| c.symbol())
+        .collect::<String>();
+    assert!(text.contains("QUICK GUIDE"));
+}
+#[test]
+fn spectrum_rainbow_toggle_really_disables_rainbow() {
+    let mut s = state();
+    let l = s.lighting.as_mut().unwrap();
+    l.draft = lighting::Lighting::new(3, [1, 2, 3], 4, 2, false).unwrap();
+    l.focus = 7;
+    press(&mut s, KeyCode::Char('2'));
+    press(&mut s, KeyCode::Enter);
+    assert!(!s.lighting.as_ref().unwrap().draft.rainbow());
+    assert_eq!(s.lighting.as_ref().unwrap().draft.mode(), 1);
+}
+#[test]
+fn failed_refresh_preserves_incomplete_recovery_and_backup_path() {
+    let mut s = state();
+    let before = s.lighting.as_ref().unwrap().original.clone();
+    s.finish_lighting_apply(
+        before,
+        Err(anyhow::anyhow!(
+            "recovery INCOMPLETE. Backup: /tmp/saved-lighting.json"
+        )),
+        Err(anyhow::anyhow!("device disconnected")),
+    );
+    assert!(s.status.contains("INCOMPLETE"));
+    assert!(s.status.contains("/tmp/saved-lighting.json"));
+    assert!(s.status.contains("disconnected"));
+    assert!(matches!(s.mode, air01::tui::Mode::Notice(_)));
+}

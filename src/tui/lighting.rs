@@ -56,12 +56,7 @@ impl LightingUi {
         self.draft != self.original.lighting
     }
     pub fn set_color(&mut self, c: [u8; 3]) {
-        let c = if c == [255; 3] { [250; 3] } else { c };
-        self.draft.params[3] = (self.draft.params[3] & 0xf0) | 7;
-        self.draft.params[4..7].copy_from_slice(&c);
-        if self.draft.mode() == 3 {
-            self.draft.params[0] = 1;
-        }
+        self.draft = self.draft.with_color(c);
     }
     fn adjust(&mut self, delta: i16) {
         match self.focus {
@@ -96,11 +91,11 @@ impl LightingUi {
                 self.draft.params[1] = 4 - (i16::from(self.draft.speed()) + delta).clamp(0, 4) as u8
             }
             7 => {
+                let rainbow = self.draft.rainbow();
                 if self.draft.mode() == 3 {
                     self.draft.params[0] = 1;
                 }
-                self.draft.params[3] =
-                    (self.draft.params[3] & 0xf0) | if self.draft.rainbow() { 7 } else { 8 };
+                self.draft.params[3] = (self.draft.params[3] & 0xf0) | if rainbow { 7 } else { 8 };
             }
             _ => {}
         }
@@ -372,6 +367,15 @@ pub fn draw(f: &mut Frame, s: &UiState) {
             BG,
         );
         super::view::workspace_nav(f, s);
+        if let Some((_, r)) = g.controls.iter().find(|(i, _)| *i == 13) {
+            control(f, *r, "Reload", true);
+        }
+        if matches!(s.mode, super::Mode::Help) {
+            super::view::draw_help(f);
+        }
+        if let super::Mode::Notice(text) = &s.mode {
+            super::view::draw_notice(f, text);
+        }
         return;
     };
     let dirty = l.dirty();
@@ -528,16 +532,17 @@ pub fn draw(f: &mut Frame, s: &UiState) {
         let [red, green, blue] = SWATCHES[i];
         text(f, *r, "  ", TEXT, Color::Rgb(red, green, blue));
     }
-    let note = if l.draft.mode() == 1 {
-        "Static effect · speed applies to animated effects".to_string()
-    } else {
-        format!(
-            "Preset: {}",
-            l.presets
-                .get(l.selected)
-                .map_or("Custom", |p| p.name.as_str())
-        )
-    };
+    let note = format!(
+        "{}{}",
+        l.presets
+            .get(l.selected)
+            .map_or("Custom", |p| p.name.as_str()),
+        if l.draft.mode() == 1 {
+            " · Static ignores speed"
+        } else {
+            ""
+        }
+    );
     text(
         f,
         Rect::new(g.editor.x, g.editor.bottom() - 1, g.editor.width, 1),

@@ -32,3 +32,23 @@ fn short_or_wrong_report_id_is_an_error() {
     r[1] = 143;
     assert_eq!(decode_report(&r).unwrap()[0], 143);
 }
+#[test]
+fn snapshot_progress_visits_every_profile_and_layer() {
+    let mut b = Board::connect(MemoryWire::new(), true).unwrap();
+    let mut steps = vec![];
+    b.snapshot_with_progress(|p, l| {
+        steps.push((p, l));
+        Ok(())
+    })
+    .unwrap();
+    assert_eq!(steps.len(), 12);
+    for p in 0..4 {
+        for layer in [
+            air01::device::Layer::Base,
+            air01::device::Layer::FnWin,
+            air01::device::Layer::FnMac,
+        ] {
+            assert!(steps.contains(&(p, layer)));
+        }
+    }
+}

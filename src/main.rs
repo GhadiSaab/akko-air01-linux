@@ -105,7 +105,11 @@ enum LightCommand {
 fn lighting_cli(cli: &Cli, cmd: &LightCommand) -> Result<()> {
     use air01::lighting::{self, Lighting};
     if matches!(cmd, LightCommand::Presets) {
-        for p in lighting::library()? {
+        let report = lighting::library_report()?;
+        for warning in report.warnings {
+            eprintln!("{warning}");
+        }
+        for p in report.presets {
             println!(
                 "{:<32} {} {}{}",
                 p.name,
@@ -181,9 +185,7 @@ fn lighting_cli(cli: &Cli, cmd: &LightCommand) -> Result<()> {
                 target.params[1] = 4 - *speed;
             }
             if let Some(color) = color {
-                let c = if *color == [255; 3] { [250; 3] } else { *color };
-                target.params[3] = (target.params[3] & 0xf0) | 7;
-                target.params[4..7].copy_from_slice(&c);
+                target = target.with_color(*color);
             }
             if *rainbow {
                 target.params[3] = (target.params[3] & 0xf0) | 8;

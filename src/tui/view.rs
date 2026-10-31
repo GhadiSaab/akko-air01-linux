@@ -600,7 +600,7 @@ Drafts stay on screen until Apply. Press any key or click to close.";
 pub(super) fn draw_notice(f: &mut Frame, text: &str) {
     let a = f.area();
     let p = Rect::new(a.x + 4, a.y + (a.height - 14) / 2, a.width - 8, 14);
-    popup_frame(f, p, " OPERATION FAILED ");
+    popup_frame(f, p, " AIR01 · NOTICE ");
     f.render_widget(
         Paragraph::new(text)
             .style(Style::default().fg(GOLD))
@@ -613,4 +613,42 @@ pub(super) fn draw_notice(f: &mut Frame, text: &str) {
         "Enter / Esc / click to close",
         true,
     );
+}
+
+pub(super) fn draw_loading(f: &mut Frame, step: u16, message: &str) {
+    let a = f.area();
+    f.render_widget(Block::new().style(Style::default().bg(BG).fg(TEXT)), a);
+    let w = a.width.min(62);
+    let h = a.height.min(9);
+    let r = Rect::new(a.x + (a.width - w) / 2, a.y + (a.height - h) / 2, w, h);
+    f.render_widget(
+        Block::bordered()
+            .border_type(BorderType::Rounded)
+            .title(" air01 / CONNECTING ")
+            .border_style(Style::default().fg(MINT)),
+        r,
+    );
+    let inner = r.inner(Margin::new(2, 1));
+    if inner.height > 0 {
+        f.render_widget(
+            Paragraph::new(message).style(Style::default().fg(TEXT)),
+            Rect::new(inner.x, inner.y, inner.width, 1),
+        );
+    }
+    if inner.height > 2 {
+        f.render_widget(
+            ratatui::widgets::Gauge::default()
+                .ratio(f64::from(step.min(13)) / 13.0)
+                .gauge_style(Style::default().fg(MINT).bg(PANEL))
+                .label(format!("{}/13", step.min(13))),
+            Rect::new(inner.x, inner.y + 2, inner.width, 1),
+        );
+    }
+    if inner.height > 4 {
+        f.render_widget(
+            Paragraph::new("Reading onboard settings · no changes sent")
+                .style(Style::default().fg(DIM)),
+            Rect::new(inner.x, inner.y + 4, inner.width, 1),
+        );
+    }
 }

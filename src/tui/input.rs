@@ -230,10 +230,22 @@ impl UiState {
             return Intent::None;
         }
         if matches!(self.mode, Mode::Browse) && self.is_lighting() {
-            return self
-                .lighting
-                .as_mut()
-                .map_or(Intent::None, |l| l.mouse(event, area, &mut self.status));
+            if let Some(l) = &mut self.lighting {
+                return l.mouse(event, area, &mut self.status);
+            }
+            let reload = super::lighting::LightLayout::new(area)
+                .controls
+                .into_iter()
+                .find(|(i, _)| *i == 13)
+                .expect("reload control")
+                .1;
+            return if event.kind == MouseEventKind::Down(MouseButton::Left)
+                && reload.contains(Position::new(event.column, event.row))
+            {
+                Intent::ReloadLighting
+            } else {
+                Intent::None
+            };
         }
         if matches!(self.mode, Mode::Picker { .. })
             && matches!(

@@ -60,6 +60,15 @@ impl Lighting {
             ],
         })
     }
+    pub fn with_color(mut self, c: [u8; 3]) -> Self {
+        let c = if c == [255; 3] { [250; 3] } else { c };
+        self.params[3] = (self.params[3] & 0xf0) | 7;
+        self.params[4..7].copy_from_slice(&c);
+        if self.mode() == 3 {
+            self.params[0] = 1;
+        }
+        self
+    }
     pub fn validate(&self) -> Result<()> {
         ensure!(
             self.params[1] <= 4 && self.params[2] <= 4,
@@ -204,13 +213,25 @@ pub fn theme_path(dir: &Path, name: &str) -> Result<PathBuf> {
     Ok(dir.join(format!("{name}.json")))
 }
 pub fn save_theme(name: &str, s: &LightingSnapshot) -> Result<PathBuf> {
-    let dir = state_dir()?.join("themes");
-    let path = theme_path(&dir, name)?;
+    save_theme_in(&state_dir()?.join("themes"), name, s)
+}
+pub fn save_theme_in(dir: &Path, name: &str, s: &LightingSnapshot) -> Result<PathBuf> {
+    let path = theme_path(dir, name)?;
     ensure!(
         !presets().iter().any(|p| p.name.eq_ignore_ascii_case(name)),
         "choose a name different from a built-in preset"
     );
     std::fs::create_dir_all(dir)?;
+    for entry in std::fs::read_dir(dir)? {
+        let p = entry?.path();
+        ensure!(
+            p.extension().is_none_or(|e| e != "json")
+                || !p
+                    .file_stem()
+                    .is_some_and(|n| n.to_string_lossy().eq_ignore_ascii_case(name)),
+            "a preset with this name already exists (case insensitive)"
+        );
+    }
     save(s, &path)?;
     Ok(path)
 }
@@ -239,9 +260,21 @@ pub fn presets() -> Vec<Preset> {
     })
     .collect()
 }
+pub struct Library {
+    pub presets: Vec<Preset>,
+    pub warnings: Vec<String>,
+}
 pub fn library() -> Result<Vec<Preset>> {
-    let mut out = presets();
-    let dir = state_dir()?.join("themes");
+    Ok(library_report()?.presets)
+}
+pub fn library_report() -> Result<Library> {
+    library_from(&state_dir()?.join("themes"))
+}
+pub fn library_from(dir: &Path) -> Result<Library> {
+    let mut out = Library {
+        presets: presets(),
+        warnings: vec![],
+    };
     if !dir.exists() {
         return Ok(out);
     }
@@ -251,18 +284,23 @@ pub fn library() -> Result<Vec<Preset>> {
     paths.sort();
     for path in paths {
         if path.extension().is_some_and(|e| e == "json") {
-            let s =
-                load(&path).with_context(|| format!("invalid saved preset {}", path.display()))?;
-            let name = path
-                .file_stem()
-                .context("invalid preset name")?
-                .to_string_lossy()
-                .into_owned();
-            out.push(Preset {
-                name,
-                lighting: s.lighting,
-                custom: true,
-            });
+            match load(&path) {
+                Ok(s) => {
+                    let name = path
+                        .file_stem()
+                        .context("invalid preset name")?
+                        .to_string_lossy()
+                        .into_owned();
+                    out.presets.push(Preset {
+                        name,
+                        lighting: s.lighting,
+                        custom: true,
+                    });
+                }
+                Err(e) => out
+                    .warnings
+                    .push(format!("Skipped {}: {e:#}", path.display())),
+            }
         }
     }
     Ok(out)
@@ -272,6 +310,15 @@ pub fn apply<W: Wire>(
     b: &mut Board<W>,
     expected: &LightingSnapshot,
     target: Lighting,
+) -> Result<Option<PathBuf>> {
+    apply_in(b, expected, target, &state_dir()?.join("lighting-backups"))
+}
+/// Use an explicit recovery directory (for embedding or isolated tests).
+pub fn apply_in<W: Wire>(
+    b: &mut Board<W>,
+    expected: &LightingSnapshot,
+    target: Lighting,
+    dir: &Path,
 ) -> Result<Option<PathBuf>> {
     expected.validate()?;
     target.validate()?;
@@ -283,8 +330,7 @@ pub fn apply<W: Wire>(
     if target == expected.lighting {
         return Ok(None);
     }
-    let dir = state_dir()?.join("lighting-backups");
-    std::fs::create_dir_all(&dir)?;
+    std::fs::create_dir_all(dir)?;
     let path = dir.join(format!(
         "lighting-{}.json",
         SystemTime::now().duration_since(UNIX_EPOCH)?.as_nanos()

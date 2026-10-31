@@ -67,6 +67,42 @@ impl UiState {
     pub fn is_lighting(&self) -> bool {
         self.lighting_workspace
     }
+    pub fn finish_lighting_apply(
+        &mut self,
+        before: crate::lighting::LightingSnapshot,
+        result: Result<Option<std::path::PathBuf>>,
+        fresh: Result<crate::lighting::LightingSnapshot>,
+    ) {
+        let failed = result.is_err();
+        let mut status = match &result {
+            Ok(Some(p)) => format!("Lighting verified. Backup: {}", p.display()),
+            Ok(None) => "Already configured; no writes needed.".into(),
+            Err(e) => format!("{e:#}"),
+        };
+        let refresh_failed = match fresh {
+            Ok(fresh) => {
+                if let Some(l) = &mut self.lighting {
+                    if result.is_ok() && fresh.lighting != before.lighting {
+                        l.undo = Some(before);
+                    }
+                    l.original = fresh.clone();
+                    if result.is_ok() {
+                        l.draft = fresh.lighting;
+                    }
+                }
+                false
+            }
+            Err(e) => {
+                status = format!("{status}. Refresh failed: {e:#}. Reconnect and reload.");
+                true
+            }
+        };
+        if failed || refresh_failed {
+            self.show_error(status)
+        } else {
+            self.status = status;
+        }
+    }
     pub fn show_error(&mut self, message: String) {
         self.status = format!("Error: {message}");
         self.mode = Mode::Notice(self.status.clone());
@@ -168,19 +204,6 @@ struct Pending {
     kind: PendingKind,
 }
 pub fn run<W: Wire>(board: &mut Board<W>) -> Result<()> {
-    eprintln!("Reading all profiles and Fn maps…");
-    let mut ui = UiState::new(board.snapshot()?);
-    match crate::lighting::read(board) {
-        Ok(l) => match crate::lighting::library() {
-            Ok(p) => ui.set_lighting(l, p),
-            Err(e) => {
-                ui.set_lighting(l, crate::lighting::presets());
-                ui.status = format!("Error loading saved presets: {e:#}");
-            }
-        },
-        Err(e) => ui.status = format!("Error reading lighting: {e:#}"),
-    }
-    let mut pending: Option<Pending> = None;
     enable_raw_mode()?;
     let _guard = TerminalGuard;
     io::stdout()
@@ -188,6 +211,33 @@ pub fn run<W: Wire>(board: &mut Board<W>) -> Result<()> {
         .execute(EnableMouseCapture)?;
     let mut terminal = Terminal::new(CrosstermBackend::new(io::stdout()))?;
     terminal.clear()?;
+    let mut step = 0;
+    let snapshot = board.snapshot_with_progress(|profile, layer| {
+        terminal.draw(|f| {
+            view::draw_loading(f, step, &format!("Reading profile {profile} · {layer}"))
+        })?;
+        step += 1;
+        Ok(())
+    })?;
+    terminal.draw(|f| view::draw_loading(f, 12, "Reading lighting and saved presets"))?;
+    let mut ui = UiState::new(snapshot);
+    match crate::lighting::read(board) {
+        Ok(l) => match crate::lighting::library_report() {
+            Ok(report) => {
+                ui.set_lighting(l, report.presets);
+                if !report.warnings.is_empty() {
+                    ui.status = report.warnings.join("\n");
+                    ui.mode = Mode::Notice(ui.status.clone());
+                }
+            }
+            Err(e) => {
+                ui.set_lighting(l, crate::lighting::presets());
+                ui.show_error(format!("loading saved presets: {e:#}"));
+            }
+        },
+        Err(e) => ui.show_error(format!("reading lighting: {e:#}")),
+    }
+    let mut pending: Option<Pending> = None;
     loop {
         terminal.draw(|f| draw(f, &ui))?;
         if !event::poll(Duration::from_millis(200))? {
@@ -227,10 +277,24 @@ pub fn run<W: Wire>(board: &mut Board<W>) -> Result<()> {
                             ..l.original.clone()
                         };
                         let path = crate::lighting::save_theme(&name, &saved)?;
-                        l.presets = crate::lighting::library()?;
                         l.editor = None;
-                        l.selected = l.presets.iter().position(|p| p.name == name).unwrap_or(0);
                         ui.status = format!("Saved preset {name}: {}", path.display());
+                        match crate::lighting::library_report() {
+                            Ok(report) => {
+                                l.presets = report.presets;
+                                l.selected =
+                                    l.presets.iter().position(|p| p.name == name).unwrap_or(0);
+                                if !report.warnings.is_empty() {
+                                    ui.status =
+                                        format!("{}\n{}", ui.status, report.warnings.join("\n"));
+                                    ui.mode = Mode::Notice(ui.status.clone());
+                                }
+                            }
+                            Err(e) => {
+                                ui.status = format!("{}. Library refresh failed: {e:#}", ui.status);
+                                ui.mode = Mode::Notice(ui.status.clone());
+                            }
+                        }
                     }
                 }
                 Intent::ReloadLighting => {
@@ -262,32 +326,7 @@ pub fn run<W: Wire>(board: &mut Board<W>) -> Result<()> {
                         terminal.draw(|f| draw(f, &ui))?;
                         let result = crate::lighting::apply(board, &before, target);
                         let fresh = crate::lighting::read(board);
-                        let l = ui.lighting.as_mut().expect("lighting state");
-                        match fresh {
-                            Ok(fresh) => {
-                                if result.is_ok() && fresh.lighting != before.lighting {
-                                    l.undo = Some(before);
-                                }
-                                l.original = fresh.clone();
-                                if result.is_ok() {
-                                    l.draft = fresh.lighting;
-                                }
-                            }
-                            Err(e) => {
-                                ui.status = format!(
-                                    "Error refreshing lighting: {e:#}. Reconnect and reload."
-                                );
-                                return Ok(());
-                            }
-                        }
-                        ui.status = match result {
-                            Ok(Some(p)) => format!("Lighting verified. Backup: {}", p.display()),
-                            Ok(None) => "Already configured; no writes needed.".into(),
-                            Err(e) => format!("Error: {e:#}"),
-                        };
-                        if ui.status.starts_with("Error:") {
-                            ui.mode = Mode::Notice(ui.status.clone());
-                        }
+                        ui.finish_lighting_apply(before, result, fresh);
                     }
                 }
                 Intent::Backup => {
