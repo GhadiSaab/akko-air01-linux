@@ -17,7 +17,7 @@ fn apply(
 fn lighting_packets_use_bit8_and_normalize_colors() {
     let l = Lighting::new(1, [255, 255, 255], 4, 2, false).unwrap();
     let p = l.packet();
-    assert_eq!(&p[1..9], &[7, 1, 2, 4, 7, 250, 250, 250]);
+    assert_eq!(&p[1..9], &[7, 1, 2, 4, 8, 250, 250, 250]);
     assert_eq!(p[1..10].iter().map(|x| *x as u16).sum::<u16>() & 255, 255);
     assert_eq!(l.color(), [255, 255, 255]);
     assert!(Lighting::new(13, [1, 2, 3], 4, 2, false).is_err());
@@ -119,4 +119,35 @@ fn custom_color_exits_spectrum_and_case_only_names_are_rejected() {
     lighting::save_theme_in(d.path(), "Desk", &s).unwrap();
     assert!(lighting::save_theme_in(d.path(), "desk", &s).is_err());
     assert!(lighting::save_theme_in(d.path(), "mint", &s).is_err());
+}
+#[test]
+fn air01_uses_its_own_fixed_and_rainbow_flags_and_palette() {
+    let red = Lighting::new(1, [255, 0, 0], 4, 2, false).unwrap();
+    assert_eq!(red.params[3] & 15, 8);
+    assert!(!red.rainbow());
+    let rainbow = Lighting::new(4, [255, 0, 0], 4, 2, true).unwrap();
+    assert_eq!(rainbow.params[3], 0x27);
+    assert!(rainbow.rainbow());
+    let p = red.packet();
+    assert_eq!(&p[1..9], &[7, 1, 2, 4, 8, 255, 0, 0]);
+    assert_eq!(p[9], 234);
+    let indexed = Lighting {
+        params: [1, 4, 4, 1, 99, 99, 99],
+    };
+    assert_eq!(indexed.color(), [0, 255, 0]);
+    let blue = Lighting {
+        params: [1, 4, 4, 2, 99, 99, 99],
+    };
+    assert_eq!(blue.color(), [0, 0, 255]);
+}
+#[test]
+fn firmware_palette_index_overrides_unused_rgb_bytes() {
+    let green = Lighting {
+        params: [1, 4, 4, 1, 250, 250, 250],
+    };
+    assert_eq!(green.color(), [0, 255, 0]);
+    let white = Lighting {
+        params: [1, 4, 4, 8, 250, 250, 250],
+    };
+    assert_eq!(white.color(), [255, 255, 255]);
 }

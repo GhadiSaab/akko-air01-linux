@@ -218,16 +218,21 @@ impl UiState {
         if matches!(self.mode, Mode::Browse)
             && !editing_light
             && event.kind == MouseEventKind::Down(MouseButton::Left)
-            && event.row == area.y + 2
         {
-            if event.column < 16 {
+            let [keys, lighting, help] = super::theme::navigation(area);
+            let point = Position::new(event.column, event.row);
+            if keys.contains(point) {
                 self.lighting_workspace = false;
-            } else if event.column < 34 {
-                self.lighting_workspace = true;
-            } else if event.column >= area.right() - 10 {
-                self.mode = Mode::Help;
+                return Intent::None;
             }
-            return Intent::None;
+            if lighting.contains(point) {
+                self.lighting_workspace = true;
+                return Intent::None;
+            }
+            if help.contains(point) {
+                self.mode = Mode::Help;
+                return Intent::None;
+            }
         }
         if matches!(self.mode, Mode::Browse) && self.is_lighting() {
             if let Some(l) = &mut self.lighting {

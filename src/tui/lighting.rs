@@ -1,4 +1,5 @@
 //! Visual lighting workspace. Layout rectangles are also its input hit targets.
+use super::theme::{self, ACCENT as MINT, BG, BORDER, DIM, GOLD, KEY, PANEL, SELECTED, TEXT};
 use super::{Intent, UiState};
 use crate::{
     keyboard,
@@ -9,13 +10,6 @@ use ratatui::{
     prelude::*,
     widgets::{Block, BorderType, Clear, Paragraph},
 };
-const BG: Color = Color::Rgb(10, 15, 24);
-const PANEL: Color = Color::Rgb(16, 23, 35);
-const TEXT: Color = Color::Rgb(220, 229, 243);
-const DIM: Color = Color::Rgb(125, 144, 169);
-const MINT: Color = Color::Rgb(94, 234, 212);
-const GOLD: Color = Color::Rgb(251, 191, 84);
-const BORDER: Color = Color::Rgb(57, 73, 96);
 pub const SWATCHES: [[u8; 3]; 8] = [
     [94, 234, 212],
     [56, 130, 255],
@@ -36,20 +30,84 @@ pub struct LightingUi {
     pub draft: Lighting,
     pub presets: Vec<Preset>,
     pub selected: usize,
+    active_preset: Option<String>,
     pub focus: usize,
     pub editor: Option<Editor>,
     pub undo: Option<LightingSnapshot>,
 }
 impl LightingUi {
-    pub fn new(original: LightingSnapshot, presets: Vec<Preset>) -> Self {
+    pub fn new(original: LightingSnapshot, mut presets: Vec<Preset>) -> Self {
+        let active_preset = presets
+            .iter()
+            .find(|p| p.lighting == original.lighting)
+            .map(|p| p.name.clone());
+        presets.insert(
+            0,
+            Preset {
+                name: "Custom".into(),
+                lighting: original.lighting,
+                custom: false,
+            },
+        );
+        let selected = active_preset
+            .as_ref()
+            .and_then(|name| presets.iter().position(|p| &p.name == name))
+            .unwrap_or(0);
         Self {
             draft: original.lighting,
             original,
             presets,
-            selected: 0,
+            selected,
+            active_preset,
             focus: 0,
             editor: None,
             undo: None,
+        }
+    }
+    pub fn active_name(&self) -> &str {
+        self.active_preset.as_deref().unwrap_or("Custom")
+    }
+    pub fn replace_presets(&mut self, mut presets: Vec<Preset>) {
+        let custom = self.presets.first().map_or(self.draft, |p| p.lighting);
+        presets.insert(
+            0,
+            Preset {
+                name: "Custom".into(),
+                lighting: custom,
+                custom: false,
+            },
+        );
+        self.presets = presets;
+        self.selected = self.selected.min(self.presets.len() - 1);
+    }
+    fn mark_custom(&mut self) {
+        self.active_preset = None;
+        self.selected = 0;
+        self.presets[0].lighting = self.draft;
+    }
+    pub fn restore_draft(&mut self, lighting: Lighting) {
+        self.draft = lighting;
+        let matched = self
+            .presets
+            .iter()
+            .enumerate()
+            .skip(1)
+            .find(|(_, p)| p.lighting == lighting);
+        self.selected = matched.map_or(0, |(i, _)| i);
+        self.active_preset = matched.map(|(_, p)| p.name.clone());
+        if self.selected == 0 {
+            self.presets[0].lighting = lighting;
+        }
+    }
+    pub fn choose_preset(&mut self, index: usize) {
+        if let Some(p) = self.presets.get(index) {
+            self.draft = p.lighting;
+            self.active_preset = if index == 0 {
+                None
+            } else {
+                Some(p.name.clone())
+            };
+            self.selected = index;
         }
     }
     pub fn dirty(&self) -> bool {
@@ -57,6 +115,7 @@ impl LightingUi {
     }
     pub fn set_color(&mut self, c: [u8; 3]) {
         self.draft = self.draft.with_color(c);
+        self.mark_custom();
     }
     fn adjust(&mut self, delta: i16) {
         match self.focus {
@@ -91,29 +150,26 @@ impl LightingUi {
                 self.draft.params[1] = 4 - (i16::from(self.draft.speed()) + delta).clamp(0, 4) as u8
             }
             7 => {
-                let rainbow = self.draft.rainbow();
-                if self.draft.mode() == 3 {
-                    self.draft.params[0] = 1;
-                }
-                self.draft.params[3] = (self.draft.params[3] & 0xf0) | if rainbow { 7 } else { 8 };
+                self.draft = self.draft.with_rainbow(!self.draft.rainbow());
             }
             _ => {}
+        }
+        if (1..=7).contains(&self.focus) {
+            self.mark_custom();
         }
     }
     fn activate(&mut self) -> Intent {
         match self.focus {
             0 => {
-                if let Some(p) = self.presets.get(self.selected) {
-                    self.draft = p.lighting;
-                }
+                self.choose_preset(self.selected);
             }
             1..=7 => self.adjust(1),
             8 => self.editor = Some(Editor::Hex(self.draft.hex())),
-            9 => return Intent::ApplyLighting,
+            9 if self.dirty() => return Intent::ApplyLighting,
             10 => self.editor = Some(Editor::Name(String::new())),
-            11 => return Intent::UndoLighting,
-            12 => self.draft = self.original.lighting,
-            13 => return Intent::ReloadLighting,
+            11 if self.undo.is_some() => return Intent::UndoLighting,
+            12 if self.dirty() => self.restore_draft(self.original.lighting),
+            13 if !self.dirty() => return Intent::ReloadLighting,
             _ => {}
         }
         Intent::None
@@ -173,9 +229,9 @@ impl LightingUi {
             KeyCode::Left => self.adjust(-1),
             KeyCode::Right => self.adjust(1),
             KeyCode::Enter | KeyCode::Char(' ') => return self.activate(),
-            KeyCode::Char('a') => return Intent::ApplyLighting,
-            KeyCode::Char('u') => return Intent::UndoLighting,
-            KeyCode::Char('r') => self.draft = self.original.lighting,
+            KeyCode::Char('a') if self.dirty() => return Intent::ApplyLighting,
+            KeyCode::Char('u') if self.undo.is_some() => return Intent::UndoLighting,
+            KeyCode::Char('r') => self.restore_draft(self.original.lighting),
             KeyCode::Char('s') => self.editor = Some(Editor::Name(String::new())),
             KeyCode::Char('x') => self.editor = Some(Editor::Hex(self.draft.hex())),
             KeyCode::Char('q') | KeyCode::Esc => return Intent::Quit,
@@ -232,6 +288,7 @@ impl LightingUi {
                 } else {
                     self.draft.params[1] = 4 - v
                 };
+                self.mark_custom();
                 return Intent::None;
             }
         }
@@ -281,19 +338,22 @@ pub struct LightLayout {
     pub controls: Vec<(usize, Rect)>,
     library: Rect,
     editor: Rect,
+    pub workspace: Rect,
 }
 impl LightLayout {
-    pub fn new(a: Rect) -> Self {
-        let left = 22;
-        let library = Rect::new(a.x, a.y + 4, left, a.height - 8);
-        let presets = Rect::new(library.x + 1, library.y + 2, left - 2, library.height - 4);
-        let x = a.x + left + 2;
-        let w = a.width - left - 3;
-        let preview_h = if a.height >= 32 { 14 } else { 8 };
-        let preview = Rect::new(x, a.y + 4, w, preview_h);
-        let editor = Rect::new(x, preview.bottom(), w, a.bottom() - 4 - preview.bottom());
+    pub fn new(area: Rect) -> Self {
+        let a = theme::workspace(area);
+        let w = (a.width - 8).min(90);
+        let h = if a.height >= 32 { 14 } else { 8 };
+        let preview = Rect::new(a.x + (a.width - w) / 2, a.y + 4, w, h);
+        let y = preview.bottom() + 1;
+        let bottom = a.bottom() - 3;
+        let library = Rect::new(a.x + 2, y, 20, bottom - y);
+        let presets = library.inner(Margin::new(1, 1));
+        let x = a.x + 24;
+        let w = a.width - 26;
+        let editor = Rect::new(x, y, w, bottom - y);
         let col = (w - 4) / 3;
-        let y = editor.y;
         let sliders = [
             Rect::new(x, y + 3, col, 1),
             Rect::new(x + col + 2, y + 3, col, 1),
@@ -302,16 +362,16 @@ impl LightLayout {
             Rect::new(x + col + 2, y + 5, col, 1),
         ];
         let swatches = (0..8).map(|i| Rect::new(x + i * 3, y + 6, 2, 1)).collect();
-        let controls = vec![
+        let mut controls = vec![
             (1, Rect::new(x, y, w / 2, 1)),
             (7, Rect::new(x + w / 2 + 1, y, w - w / 2 - 1, 1)),
-            (8, Rect::new(x + 27, y + 6, w.saturating_sub(27), 1)),
-            (9, Rect::new(a.x + 1, a.bottom() - 3, 12, 1)),
-            (10, Rect::new(a.x + 15, a.bottom() - 3, 12, 1)),
-            (11, Rect::new(a.x + 29, a.bottom() - 3, 12, 1)),
-            (12, Rect::new(a.x + 43, a.bottom() - 3, 12, 1)),
-            (13, Rect::new(a.x + 57, a.bottom() - 3, 13, 1)),
+            (8, Rect::new(x + 27, y + 6, w - 27, 1)),
         ];
+        let mut left = a.x + (a.width - 73) / 2;
+        for (focus, width) in [(9, 21), (10, 14), (11, 10), (12, 10), (13, 10)] {
+            controls.push((focus, Rect::new(left, a.bottom() - 3, width, 1)));
+            left += width + 2;
+        }
         Self {
             presets,
             preview,
@@ -320,6 +380,7 @@ impl LightLayout {
             controls,
             library,
             editor,
+            workspace: a,
         }
     }
 }
@@ -327,9 +388,9 @@ fn panel(f: &mut Frame, r: Rect, title: &str) {
     f.render_widget(
         Block::bordered()
             .border_type(BorderType::Rounded)
-            .title(title)
+            .title(Line::from(title).style(Style::default().fg(DIM)))
             .border_style(Style::default().fg(BORDER))
-            .style(Style::default().bg(PANEL)),
+            .style(Style::default().bg(PANEL).fg(DIM)),
         r,
     )
 }
@@ -340,69 +401,116 @@ fn text(f: &mut Frame, r: Rect, s: impl Into<String>, fg: Color, bg: Color) {
     )
 }
 fn control(f: &mut Frame, r: Rect, s: &str, focus: bool) {
-    text(
-        f,
+    f.render_widget(
+        Paragraph::new(s).alignment(Alignment::Center).style(
+            Style::default()
+                .fg(if focus { MINT } else { TEXT })
+                .bg(if focus { SELECTED } else { PANEL }),
+        ),
         r,
-        format!(" {s}"),
-        if focus { BG } else { MINT },
-        if focus { MINT } else { PANEL },
     )
 }
+/// A multicolor animation has no single accurate per-key terminal palette.
+pub fn preview_color(l: Lighting) -> Option<[u8; 3]> {
+    if l.rainbow() {
+        return None;
+    }
+    let mut c = l.color();
+    for v in &mut c {
+        *v = (u16::from(*v) * u16::from(l.brightness()) / 4) as u8;
+    }
+    Some(c)
+}
 pub fn draw(f: &mut Frame, s: &UiState) {
-    let a = f.area();
-    let g = LightLayout::new(a);
-    text(
-        f,
+    let g = LightLayout::new(f.area());
+    let a = g.workspace;
+    f.render_widget(
+        Paragraph::new("Air 01")
+            .alignment(Alignment::Center)
+            .style(Style::default().fg(TEXT).bold()),
         Rect::new(a.x, a.y, a.width, 1),
-        " air01  /  LIGHTING STUDIO",
-        MINT,
-        BG,
     );
+    super::view::workspace_nav(f, s);
     let Some(l) = &s.lighting else {
         text(
             f,
-            Rect::new(a.x + 2, a.y + 5, a.width - 4, 3),
-            format!("Lighting unavailable. {}  [r] reload", s.status),
+            Rect::new(a.x + 4, a.y + 6, a.width - 8, 3),
+            format!("Lighting unavailable. {}", s.status),
             GOLD,
             BG,
         );
-        super::view::workspace_nav(f, s);
         if let Some((_, r)) = g.controls.iter().find(|(i, _)| *i == 13) {
             control(f, *r, "Reload", true);
         }
         if matches!(s.mode, super::Mode::Help) {
             super::view::draw_help(f);
         }
-        if let super::Mode::Notice(text) = &s.mode {
-            super::view::draw_notice(f, text);
+        if let super::Mode::Notice(t) = &s.mode {
+            super::view::draw_notice(f, t);
         }
         return;
     };
     let dirty = l.dirty();
-    text(
-        f,
-        Rect::new(a.x + 1, a.y + 1, a.width - 2, 1),
-        format!(
-            "USB · active profile {}    {}",
+    f.render_widget(
+        Paragraph::new(format!(
+            "Connected via USB · Profile {} · {}",
             l.original.profile,
             if dirty {
-                "● Unsaved draft · Apply to keyboard"
+                "Draft — not applied"
             } else {
-                "✓ Synced with keyboard"
+                "Up to date"
             }
-        ),
-        if dirty { GOLD } else { DIM },
-        BG,
+        ))
+        .alignment(Alignment::Center)
+        .style(Style::default().fg(if dirty { GOLD } else { DIM })),
+        Rect::new(a.x, a.y + 1, a.width, 1),
     );
-    super::view::workspace_nav(f, s);
-    panel(f, g.library, " PRESET LIBRARY ");
-    text(
-        f,
-        Rect::new(g.library.x + 1, g.library.y + 1, g.library.width - 2, 1),
-        " Select to preview",
-        DIM,
-        PANEL,
-    );
+    let color = if l.draft.rainbow() {
+        "Multicolor effect".to_string()
+    } else {
+        l.draft.hex()
+    };
+    panel(f, g.preview, &format!(" {} · {} ", l.active_name(), color));
+    let inner = g.preview.inner(Margin::new(1, 1));
+    let pitch = if g.preview.height >= 14 { 2 } else { 1 };
+    let rgb = preview_color(l.draft);
+    for k in keyboard::keys() {
+        let x = inner.x + (u32::from(k.x) * u32::from(inner.width) / 732) as u16;
+        let right = inner.x
+            + ((u32::from(k.x + k.width) * u32::from(inner.width) / 732) as u16).min(inner.width);
+        let y = inner.y + k.y * pitch;
+        if right <= x || y >= inner.bottom() {
+            continue;
+        }
+        let r = Rect::new(x, y, (right - x).saturating_sub(1).max(1), 1);
+        let (bg, fg) = match rgb {
+            Some([red, green, blue]) => {
+                let luminance =
+                    (u32::from(red) * 299 + u32::from(green) * 587 + u32::from(blue) * 114) / 1000;
+                (
+                    Color::Rgb(red, green, blue),
+                    if luminance > 150 { TEXT } else { Color::White },
+                )
+            }
+            None => (KEY, DIM),
+        };
+        f.render_widget(
+            Paragraph::new(k.legend.chars().take(r.width as usize).collect::<String>())
+                .alignment(Alignment::Center)
+                .style(Style::default().fg(fg).bg(bg)),
+            r,
+        );
+    }
+    let library = Block::bordered()
+        .border_type(BorderType::Rounded)
+        .title(Line::from(" Presets ").style(Style::default().fg(DIM)))
+        .title_bottom(
+            Line::from(format!(" ↑↓ {}/{} ", l.selected + 1, l.presets.len()))
+                .style(Style::default().fg(DIM)),
+        )
+        .border_style(Style::default().fg(BORDER))
+        .style(Style::default().bg(PANEL).fg(DIM));
+    f.render_widget(library, g.library);
     let start = l.preset_start(g.presets.height);
     for (row, p) in l
         .presets
@@ -411,185 +519,154 @@ pub fn draw(f: &mut Frame, s: &UiState) {
         .take(g.presets.height as usize)
         .enumerate()
     {
-        let r = Rect::new(g.presets.x, g.presets.y + row as u16, g.presets.width, 1);
+        let i = start + row;
+        let selected = i == l.selected;
+        let active = p.name == l.active_name();
         let [red, green, blue] = p.lighting.color();
-        let sel = start + row == l.selected;
-        let name = p.name.chars().take(14).collect::<String>();
+        let r = Rect::new(g.presets.x, g.presets.y + row as u16, g.presets.width, 1);
         let line = Line::from(vec![
-            Span::styled(if sel { " ▸ " } else { "   " }, Style::default().fg(MINT)),
-            Span::styled("● ", Style::default().fg(Color::Rgb(red, green, blue))),
-            Span::raw(name),
-            Span::styled(if p.custom { " +" } else { "" }, Style::default().fg(DIM)),
+            Span::styled(if active { "✓ " } else { "  " }, Style::default().fg(MINT)),
+            Span::styled(
+                if i == 0 { "◉ " } else { "● " },
+                Style::default().fg(if i == 0 {
+                    MINT
+                } else {
+                    Color::Rgb(red, green, blue)
+                }),
+            ),
+            Span::raw(p.name.chars().take(13).collect::<String>()),
         ]);
         f.render_widget(
-            Paragraph::new(line).style(
-                Style::default()
-                    .fg(if sel { TEXT } else { DIM })
-                    .bg(if sel { Color::Rgb(29, 45, 59) } else { PANEL }),
-            ),
+            Paragraph::new(line).style(Style::default().fg(TEXT).bg(if selected {
+                SELECTED
+            } else {
+                PANEL
+            })),
             r,
         );
     }
-    text(
-        f,
-        Rect::new(
-            g.library.x + 1,
-            g.library.bottom() - 2,
-            g.library.width - 2,
-            1,
-        ),
-        format!(" {}/{} · ↑↓ Enter", l.selected + 1, l.presets.len()),
-        DIM,
-        PANEL,
-    );
-    panel(f, g.preview, " COLOR PREVIEW ");
-    let inner = g.preview.inner(Margin::new(1, 1));
-    let pitch = if g.preview.height >= 14 { 2 } else { 1 };
-    for k in keyboard::keys() {
-        let x = inner.x + (u32::from(k.x) * u32::from(inner.width) / 732) as u16;
-        let right = inner.x
-            + ((u32::from(k.x + k.width) * u32::from(inner.width) / 732) as u16).min(inner.width);
-        let row = k.y; // normalized physical row, 0..5
-        let y = inner.y + row * pitch;
-        if right <= x || y >= inner.bottom() {
-            continue;
-        }
-        let mut c = if l.draft.rainbow() {
-            SWATCHES[(usize::from(k.x / 80) + usize::from(row)) % 7]
-        } else {
-            l.draft.color()
-        };
-        let b = u16::from(l.draft.brightness());
-        for ch in &mut c {
-            *ch = (u16::from(*ch) * b / 4) as u8;
-        }
-        let bg = Color::Rgb(c[0] / 4, c[1] / 4, c[2] / 4);
-        let fg = Color::Rgb(c[0].max(40), c[1].max(40), c[2].max(40));
-        let r = Rect::new(x, y, (right - x).saturating_sub(1).max(1), 1);
-        f.render_widget(
-            Paragraph::new(k.legend.chars().take(r.width as usize).collect::<String>())
-                .alignment(Alignment::Center)
-                .style(Style::default().fg(fg).bg(bg).bold()),
-            r,
-        );
-    }
-    let effect = format!("◀ {} ▶", l.draft.effect());
-    let spectrum = format!("{} Rainbow", if l.draft.rainbow() { "☑" } else { "☐" });
+    f.render_widget(Block::new().style(Style::default().bg(PANEL)), g.editor);
+    let effect = format!("‹ {} ›", l.draft.effect());
+    let rainbow = format!("{} Multicolor", if l.draft.rainbow() { "☑" } else { "☐" });
     for (focus, r) in &g.controls {
         let label = match focus {
             1 => effect.as_str(),
-            7 => spectrum.as_str(),
-            8 => "x Hex color",
-            9 => "a Apply",
-            10 => "s Save",
+            7 => rainbow.as_str(),
+            8 => "x Color…",
+            9 => "a Apply to keyboard",
+            10 => "s Save preset…",
             11 => "u Undo",
             12 => "r Revert",
             13 => "Reload",
             _ => "",
         };
         control(f, *r, label, l.focus == *focus);
+        if *focus == 9 && dirty {
+            f.render_widget(
+                Paragraph::new(label)
+                    .alignment(Alignment::Center)
+                    .style(Style::default().fg(Color::White).bg(MINT).bold()),
+                *r,
+            );
+        }
+        if (*focus == 9 && !dirty)
+            || (*focus == 11 && l.undo.is_none())
+            || (*focus == 12 && !dirty)
+            || (*focus == 13 && dirty)
+        {
+            text(f, *r, format!(" {label}"), DIM, KEY);
+        }
     }
+    let caption = if l.draft.rainbow() {
+        "Multicolor animation runs on keyboard".into()
+    } else {
+        format!("Color {}", l.draft.hex())
+    };
     text(
         f,
         Rect::new(g.editor.x, g.editor.y + 1, g.editor.width, 1),
-        format!(
-            "{}    {}",
-            l.draft.hex(),
-            if l.draft.rainbow() {
-                "color varies by effect"
-            } else {
-                "custom single color"
-            }
-        ),
+        caption,
         DIM,
-        BG,
+        PANEL,
     );
     let c = l.draft.color();
     for (i, r) in g.sliders.iter().enumerate() {
         let (name, v, max, color) = match i {
-            0 => ("Red", c[0], 255, Color::Rgb(255, 110, 130)),
-            1 => ("Green", c[1], 255, MINT),
-            2 => ("Blue", c[2], 255, Color::Rgb(110, 160, 255)),
-            3 => ("Brightness", l.draft.brightness(), 4, GOLD),
-            _ => ("Speed", l.draft.speed(), 4, Color::Rgb(180, 150, 255)),
+            0 => ("Red", c[0], 255, Color::Rgb(220, 45, 65)),
+            1 => ("Green", c[1], 255, Color::Rgb(25, 135, 65)),
+            2 => ("Blue", c[2], 255, MINT),
+            3 => ("Brightness", l.draft.brightness(), 4, MINT),
+            _ => ("Speed", l.draft.speed(), 4, MINT),
         };
         text(
             f,
             Rect::new(r.x, r.y - 1, r.width, 1),
             format!("{name} {v}"),
-            if l.focus == i + 2 { TEXT } else { DIM },
-            BG,
+            if l.focus == i + 2 { MINT } else { DIM },
+            PANEL,
         );
         let filled = (u32::from(v) * u32::from(r.width) / max) as usize;
         let width = r.width as usize;
-        let line = Line::from(vec![
-            Span::styled("━".repeat(filled), Style::default().fg(color)),
-            Span::styled("─".repeat(width - filled), Style::default().fg(BORDER)),
-        ]);
-        f.render_widget(Paragraph::new(line), *r);
+        f.render_widget(
+            Paragraph::new(Line::from(vec![
+                Span::styled("━".repeat(filled), Style::default().fg(color)),
+                Span::styled("─".repeat(width - filled), Style::default().fg(BORDER)),
+            ]))
+            .style(Style::default().bg(PANEL)),
+            *r,
+        );
     }
     for (i, r) in g.swatches.iter().enumerate() {
         let [red, green, blue] = SWATCHES[i];
         text(f, *r, "  ", TEXT, Color::Rgb(red, green, blue));
     }
-    let note = format!(
-        "{}{}",
-        l.presets
-            .get(l.selected)
-            .map_or("Custom", |p| p.name.as_str()),
-        if l.draft.mode() == 1 {
-            " · Static ignores speed"
-        } else {
-            ""
-        }
-    );
-    text(
-        f,
-        Rect::new(g.editor.x, g.editor.bottom() - 1, g.editor.width, 1),
-        note,
-        DIM,
-        BG,
-    );
-    text(
-        f,
-        Rect::new(a.x, a.bottom() - 4, a.width, 1),
-        format!(
-            " {}",
-            if s.status.starts_with("Click a key") {
-                "Choose a preset or color. Apply sends this draft to the keyboard."
-            } else {
-                &s.status
-            }
-        ),
-        if s.status.starts_with("Error") {
-            GOLD
-        } else {
-            DIM
-        },
-        BG,
-    );
-    text(
-        f,
-        Rect::new(a.x, a.bottom() - 2, a.width, 1),
-        " Tab focus · ←→ adjust · Enter select · click/drag sliders · x hex · ? help",
-        DIM,
-        BG,
-    );
-    text(
-        f,
-        Rect::new(a.x, a.bottom() - 1, a.width, 1),
-        " Preview only until Apply · Undo restores last applied lighting · q quit",
-        DIM,
-        BG,
-    );
-    if let Some(editor) = &l.editor {
-        draw_editor(f, editor);
+    if g.editor.height >= 8 {
+        text(
+            f,
+            Rect::new(g.editor.x, g.editor.y + 7, g.editor.width, 1),
+            format!(
+                "{}{}",
+                l.active_name(),
+                if l.draft.mode() == 1 {
+                    " · Static ignores speed"
+                } else {
+                    ""
+                }
+            ),
+            DIM,
+            PANEL,
+        );
     }
-    if let super::Mode::Notice(text) = &s.mode {
-        super::view::draw_notice(f, text);
+    let status = if s.status.starts_with("Click a key") {
+        if dirty {
+            "Previewing changes. Apply when ready."
+        } else {
+            "Choose a preset, or adjust a color to create Custom."
+        }
+    } else {
+        &s.status
+    };
+    text(
+        f,
+        Rect::new(a.x + 2, a.bottom() - 2, a.width - 4, 1),
+        status,
+        DIM,
+        BG,
+    );
+    f.render_widget(
+        Paragraph::new("Tab focus · ←→ adjust · Enter choose · ? Help · q Quit")
+            .alignment(Alignment::Center)
+            .style(Style::default().fg(DIM)),
+        Rect::new(a.x, a.bottom() - 1, a.width, 1),
+    );
+    if let Some(e) = &l.editor {
+        draw_editor(f, e)
     }
     if matches!(s.mode, super::Mode::Help) {
         super::view::draw_help(f);
+    }
+    if let super::Mode::Notice(t) = &s.mode {
+        super::view::draw_notice(f, t);
     }
 }
 fn editor_rect(a: Rect) -> Rect {

@@ -16,6 +16,7 @@ use ratatui::prelude::*;
 use std::{io, path::Path, time::Duration};
 mod input;
 pub mod lighting;
+pub mod theme;
 mod view;
 pub use view::{UiLayout, draw};
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -87,7 +88,7 @@ impl UiState {
                     }
                     l.original = fresh.clone();
                     if result.is_ok() {
-                        l.draft = fresh.lighting;
+                        l.restore_draft(fresh.lighting);
                     }
                 }
                 false
@@ -281,9 +282,10 @@ pub fn run<W: Wire>(board: &mut Board<W>) -> Result<()> {
                         ui.status = format!("Saved preset {name}: {}", path.display());
                         match crate::lighting::library_report() {
                             Ok(report) => {
-                                l.presets = report.presets;
-                                l.selected =
+                                l.replace_presets(report.presets);
+                                let selected =
                                     l.presets.iter().position(|p| p.name == name).unwrap_or(0);
+                                l.choose_preset(selected);
                                 if !report.warnings.is_empty() {
                                     ui.status =
                                         format!("{}\n{}", ui.status, report.warnings.join("\n"));
@@ -302,7 +304,7 @@ pub fn run<W: Wire>(board: &mut Board<W>) -> Result<()> {
                     if let Some(l) = &mut ui.lighting {
                         anyhow::ensure!(!l.dirty(), "draft has changes; Revert before reloading");
                         l.original = fresh.clone();
-                        l.draft = fresh.lighting;
+                        l.restore_draft(fresh.lighting);
                         l.undo = None;
                     } else {
                         ui.set_lighting(fresh, crate::lighting::library()?);

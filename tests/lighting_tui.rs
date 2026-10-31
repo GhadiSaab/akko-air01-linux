@@ -65,7 +65,7 @@ fn lighting_workspace_fits_small_and_large_terminals() {
             .map(|c| c.symbol())
             .collect::<String>();
         for label in [
-            "LIGHTING",
+            "Lighting",
             "Mint",
             "Apply",
             "Brightness",
@@ -87,7 +87,7 @@ fn lighting_preview_keeps_all_six_physical_rows() {
     let rows = (g.preview.y + 1..g.preview.bottom() - 1)
         .filter(|y| {
             (g.preview.x + 1..g.preview.right() - 1)
-                .any(|x| t.backend().buffer()[(x, *y)].bg != Color::Rgb(16, 23, 35))
+                .any(|x| t.backend().buffer()[(x, *y)].bg != air01::tui::theme::PANEL)
         })
         .count();
     assert_eq!(rows, 6);
@@ -191,4 +191,99 @@ fn failed_refresh_preserves_incomplete_recovery_and_backup_path() {
     assert!(s.status.contains("/tmp/saved-lighting.json"));
     assert!(s.status.contains("disconnected"));
     assert!(matches!(s.mode, air01::tui::Mode::Notice(_)));
+}
+#[test]
+fn edits_select_custom_and_custom_draft_survives_preset_switches_and_refresh() {
+    let mut s = state();
+    let l = s.lighting.as_mut().unwrap();
+    assert_eq!(l.presets[0].name, "Custom");
+    l.set_color([12, 34, 56]);
+    assert_eq!(l.active_name(), "Custom");
+    assert_eq!(l.selected, 0);
+    let custom = l.draft;
+    l.selected = 1;
+    l.focus = 0;
+    press(&mut s, KeyCode::Char('2'));
+    press(&mut s, KeyCode::Enter);
+    assert_eq!(s.lighting.as_ref().unwrap().active_name(), "Mint");
+    {
+        let l = s.lighting.as_mut().unwrap();
+        l.replace_presets(lighting::presets());
+        l.selected = 0;
+    }
+    press(&mut s, KeyCode::Enter);
+    assert_eq!(s.lighting.as_ref().unwrap().draft, custom);
+    // Brightness editing is also Custom, rather than keeping the old preset name.
+    s.lighting.as_mut().unwrap().focus = 5;
+    press(&mut s, KeyCode::Left);
+    assert_eq!(s.lighting.as_ref().unwrap().active_name(), "Custom");
+}
+#[test]
+fn large_layout_centers_a_bounded_keyboard_and_keeps_controls_inside() {
+    for area in [
+        Rect::new(0, 0, 160, 50),
+        Rect::new(7, 3, 180, 56),
+        Rect::new(0, 0, 80, 24),
+    ] {
+        let g = air01::tui::lighting::LightLayout::new(area);
+        assert!(g.preview.width <= 90);
+        assert_eq!(
+            (g.preview.x - area.x) * 2 + g.preview.width,
+            area.width,
+            "preview not centered"
+        );
+        for r in g
+            .sliders
+            .iter()
+            .chain(g.swatches.iter())
+            .chain(g.controls.iter().map(|(_, r)| r))
+        {
+            assert!(
+                r.x >= area.x
+                    && r.y >= area.y
+                    && r.right() <= area.right()
+                    && r.bottom() <= area.bottom()
+            );
+        }
+        assert!(
+            g.presets.y >= g.preview.bottom(),
+            "presets should sit below the keyboard"
+        );
+    }
+}
+#[test]
+fn centered_navigation_hit_targets_match_visible_tabs() {
+    let mut s = state();
+    let area = Rect::new(0, 0, 160, 50);
+    let [_, tab, _] = air01::tui::theme::navigation(area);
+    s.handle_mouse(
+        MouseEvent {
+            kind: MouseEventKind::Down(MouseButton::Left),
+            column: tab.x,
+            row: tab.y,
+            modifiers: KeyModifiers::NONE,
+        },
+        area,
+    );
+    assert!(s.is_lighting());
+    let g = air01::tui::UiLayout::new(area);
+    assert!(g.keyboard.width < 100);
+    assert_eq!(g.keyboard.x * 2 + g.keyboard.width, area.width);
+}
+#[test]
+fn an_unchanged_lighting_draft_does_not_offer_a_write_or_undo() {
+    let mut s = state();
+    press(&mut s, KeyCode::Char('2'));
+    assert_eq!(press(&mut s, KeyCode::Char('a')), Intent::None);
+    assert_eq!(press(&mut s, KeyCode::Char('u')), Intent::None);
+}
+#[test]
+fn multicolor_preview_does_not_invent_per_key_colors() {
+    let rainbow = lighting::Lighting::new(4, [255, 0, 0], 4, 2, true).unwrap();
+    assert_eq!(air01::tui::lighting::preview_color(rainbow), None);
+    let pink = lighting::Lighting::new(1, [255, 105, 180], 4, 2, false).unwrap();
+    assert_eq!(
+        air01::tui::lighting::preview_color(pink),
+        Some([255, 105, 180])
+    );
 }

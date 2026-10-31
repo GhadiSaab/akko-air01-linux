@@ -188,7 +188,7 @@ fn lighting_cli(cli: &Cli, cmd: &LightCommand) -> Result<()> {
                 target = target.with_color(*color);
             }
             if *rainbow {
-                target.params[3] = (target.params[3] & 0xf0) | 8;
+                target = target.with_rainbow(true);
             }
             target
         }

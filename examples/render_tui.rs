@@ -42,7 +42,11 @@ fn main() -> Result<()> {
                 schema: 1,
                 device_id: 3013,
                 profile: ui.snapshot.active_profile,
-                lighting: air01::lighting::presets()[0].lighting,
+                lighting: if let Some(path) = args.get(5) {
+                    air01::lighting::load(std::path::Path::new(path))?.lighting
+                } else {
+                    air01::lighting::presets()[0].lighting
+                },
             },
             air01::lighting::presets(),
         );

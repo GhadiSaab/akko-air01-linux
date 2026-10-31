@@ -17,6 +17,9 @@ use std::{
 pub struct Lighting {
     pub params: [u8; 7],
 }
+// Air01 vendor class d8 explicitly overrides the generic Gen2 flag pair.
+pub const FIXED_COLOR: u8 = 8;
+pub const RAINBOW_COLOR: u8 = 7;
 pub const EFFECTS: &[(u8, &str)] = &[
     (1, "Static"),
     (2, "Breathing"),
@@ -53,7 +56,8 @@ impl Lighting {
                 mode,
                 4 - speed,
                 brightness,
-                if mode == 4 { 0x20 } else { 0 } | if rainbow { 8 } else { 7 },
+                if mode == 4 { 0x20 } else { 0 }
+                    | if rainbow { RAINBOW_COLOR } else { FIXED_COLOR },
                 color[0],
                 color[1],
                 color[2],
@@ -62,11 +66,18 @@ impl Lighting {
     }
     pub fn with_color(mut self, c: [u8; 3]) -> Self {
         let c = if c == [255; 3] { [250; 3] } else { c };
-        self.params[3] = (self.params[3] & 0xf0) | 7;
+        self.params[3] = (self.params[3] & 0xf0) | FIXED_COLOR;
         self.params[4..7].copy_from_slice(&c);
         if self.mode() == 3 {
             self.params[0] = 1;
         }
+        self
+    }
+    pub fn with_rainbow(mut self, on: bool) -> Self {
+        if !on && self.mode() == 3 {
+            self.params[0] = 1;
+        }
+        self.params[3] = (self.params[3] & 0xf0) | if on { RAINBOW_COLOR } else { FIXED_COLOR };
         self
     }
     pub fn validate(&self) -> Result<()> {
@@ -92,26 +103,23 @@ impl Lighting {
         self.params[2]
     }
     pub fn rainbow(self) -> bool {
-        self.params[3] & 15 == 8 || self.mode() == 3
+        self.params[3] & 15 == RAINBOW_COLOR || self.mode() == 3
     }
     pub fn color(self) -> [u8; 3] {
         let raw: [u8; 3] = self.params[4..7].try_into().expect("three bytes");
-        if raw == [250; 3] {
-            return [255; 3];
-        }
         const COLORS: [[u8; 3]; 7] = [
             [255, 0, 0],
-            [255, 128, 0],
-            [255, 255, 0],
             [0, 255, 0],
-            [0, 255, 255],
             [0, 0, 255],
-            [255, 0, 255],
+            [255, 85, 0],
+            [119, 0, 255],
+            [255, 255, 0],
+            [255, 255, 255],
         ];
-        COLORS
-            .get((self.params[3] & 15) as usize)
-            .copied()
-            .unwrap_or(raw)
+        if let Some(color) = COLORS.get((self.params[3] & 15) as usize) {
+            return *color;
+        }
+        if raw == [250; 3] { [255; 3] } else { raw }
     }
     pub fn hex(self) -> String {
         let [r, g, b] = self.color();
@@ -218,7 +226,8 @@ pub fn save_theme(name: &str, s: &LightingSnapshot) -> Result<PathBuf> {
 pub fn save_theme_in(dir: &Path, name: &str, s: &LightingSnapshot) -> Result<PathBuf> {
     let path = theme_path(dir, name)?;
     ensure!(
-        !presets().iter().any(|p| p.name.eq_ignore_ascii_case(name)),
+        !name.eq_ignore_ascii_case("Custom")
+            && !presets().iter().any(|p| p.name.eq_ignore_ascii_case(name)),
         "choose a name different from a built-in preset"
     );
     std::fs::create_dir_all(dir)?;

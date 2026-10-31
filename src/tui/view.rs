@@ -1,16 +1,10 @@
+use super::theme::{self, ACCENT as MINT, BG, BORDER, DIM, GOLD, KEY, PANEL, SELECTED, TEXT};
 use super::{Mode, UiState, picker_items};
 use crate::{device::Layer, keyboard, operations, protocol::Action};
 use ratatui::{
     prelude::*,
     widgets::{Block, BorderType, Borders, Clear, Paragraph, Wrap},
 };
-const BG: Color = Color::Rgb(10, 15, 24);
-const PANEL: Color = Color::Rgb(16, 23, 35);
-const TEXT: Color = Color::Rgb(220, 229, 243);
-const DIM: Color = Color::Rgb(125, 144, 169);
-const MINT: Color = Color::Rgb(94, 234, 212);
-const GOLD: Color = Color::Rgb(251, 191, 84);
-const BORDER: Color = Color::Rgb(57, 73, 96);
 #[derive(Clone, Copy, Debug)]
 pub enum UiButton {
     Backup,
@@ -31,26 +25,18 @@ pub struct UiLayout {
 }
 impl UiLayout {
     pub fn new(area: Rect) -> Self {
-        let large = area.height >= 34 && area.width >= 100;
-        let board_height = if large { 21 } else { 15 };
-        let board = Rect::new(
-            area.x,
-            area.y + 3,
-            area.width,
-            board_height.min(area.height.saturating_sub(3)),
-        );
+        let area = theme::workspace(area);
+        let large = false;
+        let w = area.width.saturating_sub(4).min(88);
+        let top = area.y + 4 + ((area.height.saturating_sub(24)) / 3).min(3);
+        let board = Rect::new(area.x + (area.width - w) / 2, top, w, 15);
         let keyboard = board.inner(Margin::new(1, 1));
+        let footer = Rect::new(area.x, area.bottom().saturating_sub(3), area.width, 3);
         let detail = Rect::new(
-            area.x,
+            board.x,
             board.bottom(),
-            area.width,
-            area.height.saturating_sub(6 + board.height),
-        );
-        let footer = Rect::new(
-            area.x,
-            area.bottom().saturating_sub(3),
-            area.width,
-            3.min(area.height),
+            board.width,
+            footer.y.saturating_sub(board.bottom()),
         );
         let profile_tabs = (0..4)
             .map(|p| {
@@ -93,7 +79,7 @@ fn button(f: &mut Frame, area: Rect, text: &str, selected: bool) {
         Paragraph::new(text)
             .alignment(Alignment::Center)
             .style(if selected {
-                Style::default().bg(Color::Rgb(24, 64, 59)).fg(MINT).bold()
+                Style::default().bg(SELECTED).fg(MINT).bold()
             } else {
                 Style::default().bg(PANEL).fg(DIM)
             }),
@@ -202,20 +188,16 @@ pub fn draw(f: &mut Frame, s: &UiState) {
         super::lighting::draw(f, s);
         return;
     }
+    let area = theme::workspace(area);
     workspace_nav(f, s);
     let g = UiLayout::new(area);
     f.render_widget(
-        Paragraph::new(Line::from(vec![
-            Span::styled(" air01 ", Style::default().fg(MINT).bold()),
-            Span::styled(
-                format!(
-                    " / AKKO AIR 01    active: {}    viewing: {}",
-                    s.snapshot.active_profile, s.selected_profile
-                ),
-                Style::default().fg(TEXT),
-            ),
-            Span::styled("    USB", Style::default().fg(DIM)),
-        ])),
+        Paragraph::new(format!(
+            "Air 01   ·   active: {}   ·   viewing: {}",
+            s.snapshot.active_profile, s.selected_profile
+        ))
+        .alignment(Alignment::Center)
+        .style(Style::default().fg(TEXT).bold()),
         Rect::new(area.x, area.y, area.width, 1),
     );
     f.render_widget(
@@ -259,7 +241,7 @@ pub fn draw(f: &mut Frame, s: &UiState) {
             .border_type(BorderType::Rounded)
             .border_style(Style::default().fg(BORDER))
             .style(Style::default().bg(PANEL))
-            .title(Line::from(" AKKO AIR 01 · click a key ").style(Style::default().fg(DIM))),
+            .title(Line::from(" Keyboard · click a key ").style(Style::default().fg(DIM))),
         g.board,
     );
     for (slot, r) in keyboard::rectangles(g.keyboard, g.large) {
@@ -280,11 +262,7 @@ pub fn draw(f: &mut Frame, s: &UiState) {
         } else {
             BORDER
         };
-        let bg = if selected {
-            Color::Rgb(23, 58, 55)
-        } else {
-            Color::Rgb(23, 32, 47)
-        };
+        let bg = if selected { SELECTED } else { KEY };
         let block = Block::bordered()
             .border_type(BorderType::Rounded)
             .border_style(Style::default().fg(border))
@@ -532,7 +510,7 @@ fn draw_picker(f: &mut Frame, s: &UiState, query: &str, selected: usize) {
         );
         f.render_widget(
             Paragraph::new(label).style(if i == selected {
-                Style::default().bg(Color::Rgb(24, 64, 59)).fg(MINT).bold()
+                Style::default().bg(SELECTED).fg(MINT).bold()
             } else {
                 Style::default().fg(TEXT)
             }),
@@ -547,25 +525,10 @@ fn draw_picker(f: &mut Frame, s: &UiState, query: &str, selected: usize) {
 }
 
 pub(super) fn workspace_nav(f: &mut Frame, s: &UiState) {
-    let a = f.area();
-    button(
-        f,
-        Rect::new(a.x, a.y + 2, 15, 1),
-        "1  Keymap",
-        !s.is_lighting(),
-    );
-    button(
-        f,
-        Rect::new(a.x + 16, a.y + 2, 17, 1),
-        "2  Lighting",
-        s.is_lighting(),
-    );
-    button(
-        f,
-        Rect::new(a.right() - 10, a.y + 2, 10, 1),
-        "? Help",
-        false,
-    );
+    let [keys, lighting, help] = theme::navigation(f.area());
+    button(f, keys, "1  Keymap", !s.is_lighting());
+    button(f, lighting, "2  Lighting", s.is_lighting());
+    button(f, help, "? Help", false);
 }
 pub(super) fn draw_help(f: &mut Frame) {
     let a = f.area();
