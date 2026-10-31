@@ -14,6 +14,7 @@ pub struct State {
     pub gen2: bool,
     pub writes: Vec<[u8; 65]>,
     pub fail_at: Option<usize>,
+    pub fail_from: Option<usize>,
     pub ignore_at: Option<usize>,
     pub always_ignore: bool,
 }
@@ -42,6 +43,7 @@ impl MemoryWire {
             gen2: true,
             writes: vec![],
             fail_at: None,
+            fail_from: None,
             ignore_at: None,
             always_ignore: false,
         })))
@@ -94,7 +96,7 @@ impl Wire for MemoryWire {
         let mut s = self.0.borrow_mut();
         s.writes.push(p);
         let n = s.writes.len();
-        if s.fail_at == Some(n) {
+        if s.fail_at == Some(n) || s.fail_from.is_some_and(|from| n >= from) {
             bail!("simulated send failure");
         }
         if s.ignore_at == Some(n) || s.always_ignore {
