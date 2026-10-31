@@ -1,4 +1,5 @@
 pub mod device;
+pub mod keyboard;
 pub mod operations;
 pub mod protocol;
 pub mod snapshot;
