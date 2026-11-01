@@ -4,6 +4,7 @@ pub mod keyboard;
 pub mod lighting;
 pub mod operations;
 pub mod protocol;
+pub mod receiver;
 pub mod snapshot;
 pub mod transport;
 pub mod tui;

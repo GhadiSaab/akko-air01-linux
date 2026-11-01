@@ -4,7 +4,8 @@ A native Rust CLI and terminal interface for configuring the **Akko Air 01 on
 Linux**. Inspect profiles, remap keys including Fn, save or restore keymaps, and configure RGB lighting with reusable presets.
 No browser, cloud account, WebKit, root GUI, or kernel module.
 
-Tested hardware: wired USB `3151:5002`, device ID **3013**, firmware `1.10`.
+Tested hardware: USB cable `3151:5002` and 2.4 GHz receiver `3151:5006`,
+device ID **3013**, firmware `1.10`.
 Other device IDs and ambiguous protocol replies are rejected; firmware versions
 are not allowlisted. This is an early, independent project, not an
 Akko product. There is no firmware flashing or factory-reset command.
@@ -22,8 +23,9 @@ settings loss.
 With Rust 1.88 or newer:
 
 ```sh
-cargo install --locked --path .
+cargo install --git https://github.com/GhadiSaab/akko-air01-linux --locked
 air01 info
+# Or, from a local clone: cargo install --locked --path .
 ```
 
 NixOS:
@@ -46,6 +48,7 @@ Otherwise, on NixOS add this to a system module and rebuild, then replug:
 ```nix
 services.udev.extraRules = ''
   SUBSYSTEM=="hidraw", ATTRS{idVendor}=="3151", ATTRS{idProduct}=="5002", MODE="0660", TAG+="uaccess"
+  SUBSYSTEM=="hidraw", ATTRS{idVendor}=="3151", ATTRS{idProduct}=="5006", MODE="0660", TAG+="uaccess"
 '';
 ```
 
@@ -56,9 +59,28 @@ coordinates other air01 instances, not browsers or unrelated applications.
 
 ## CLI
 
-Connect a USB **data** cable and select wired mode. Writes over the receiver or
-Bluetooth are not supported in this release. Changes stored on the board can
-then be used wirelessly.
+Connect a USB **data** cable, or use the paired **2.4 GHz receiver** and wake
+the keyboard. The cable is preferred when both are attached. `air01 devices`
+shows the link; use `--device /dev/hidrawN` to choose explicitly.
+
+| Connection | Keymaps / profiles | RGB lighting | Animation uploads |
+|---|---|---|---|
+| USB cable | All four profiles and Fn layers | Yes | Yes |
+| 2.4 GHz receiver | Active-profile edits, Fn layers and profile switching | Yes | USB required |
+| Bluetooth | Configuration unsupported | Configuration unsupported | Unsupported |
+
+Over 2.4 GHz, activate a profile before editing it. Cross-profile remaps/restores
+and `swap-fn-ctrl --all-profiles` need USB. Full backup/inspection reads all four
+profiles through either supported link. Pairing itself is handled by the keyboard;
+this application requires an already paired, awake keyboard.
+
+**Receiver responsiveness:** reading the initial settings or applying changes can
+briefly increase typing latency. The transport leaves quiet radio time between
+commands, bounds read retries and never blindly resends writes. Once the TUI is
+idle, browsing/editing a draft or closed, it sends **no background HID traffic**.
+A full wireless read takes tens of seconds; use the cable for frequent or bulk
+configuration. These limits were measured on this Air 01, not inferred from another
+model.
 
 ```sh
 air01 devices
@@ -118,8 +140,8 @@ from **INCOMPLETE** recovery and name the affected slots. If recovery cannot be
 verified, close the application, reconnect the cable, inspect the profile, and
 restore the printed backup. No write is blindly retried.
 
-The transport returns an error after three seconds without a worker reply and
-refuses further commands. Linux HID feature ioctls cannot be cancelled through
+The transport returns an error after three seconds without a worker reply on USB
+(or eight seconds on the receiver) and refuses further commands. Linux HID feature ioctls cannot be cancelled through
 hidapi, so a timed-out write has an unknown outcome; air01 does not claim it was
 rolled back. Reconnect before continuing. Do not run another configurator
 against a timed-out device while this process is still exiting.
@@ -166,7 +188,8 @@ not start edits.
 
 Press **2** or click **Lighting**; **1** returns to Keymap. **? / F1** opens
 Help. The lighting workspace controls the **active hardware profile**, independent
-of the profile previewed in Keymap. Its keyboard shows the selected solid RGB color;
+of the profile previewed in Keymap. The header identifies USB or2.4GHz, and
+wireless animation uploads are disabled with a USB requirement. Its keyboard shows the selected solid RGB color;
 multicolor animations use neutral keycaps and an explicit label because their
 per-key color arrangement is controlled by firmware.
 
@@ -264,9 +287,17 @@ verified per slot; a crash or power loss mid-restore is not atomic. The original
 snapshot remains available for recovery.
 
 See [protocol notes](docs/PROTOCOL.md) and [attribution](NOTICE). Licensed under
-[GPL-3.0-or-later](LICENSE). No repository has been published by this setup.
+[GPL-3.0-or-later](LICENSE). Source: [GhadiSaab/akko-air01-linux](https://github.com/GhadiSaab/akko-air01-linux).
 
 UI layout references: [Yazi](https://github.com/sxyazi/yazi) and
 [Lazygit](https://github.com/jesseduffield/lazygit). The app uses a shared shell,
 section separators, one focus indicator and contextual shortcuts. No launcher,
 compositor or terminal-window settings are changed by the UI.
+
+### Receiver validation
+
+On device3013 firmware1.10, receiver-only tests verified complete keymap backup
+against a wired snapshot, temporary RGB/brightness changes, base/Windows-Fn/Mac-Fn
+remaps and profile selection, restoring exact original settings afterward.
+The TUI uses the same verified backend. Bluetooth configuration, other receiver
+IDs and wireless animation uploads have not been validated.

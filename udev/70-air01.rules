@@ -1,2 +1,3 @@
-# Settings access for the tested wired Akko Air 01. No root GUI required.
+# Settings access for the tested Air01 cable and receiver. No root GUI required.
 SUBSYSTEM=="hidraw", ATTRS{idVendor}=="3151", ATTRS{idProduct}=="5002", MODE="0660", TAG+="uaccess"
+SUBSYSTEM=="hidraw", ATTRS{idVendor}=="3151", ATTRS{idProduct}=="5006", MODE="0660", TAG+="uaccess"

@@ -211,3 +211,34 @@ fn ui_refresh_rejects_changed_active_profile() {
     assert!(fresh_for_plan(&mut b, &cached, &[]).is_err());
     assert!(w.0.borrow().writes.is_empty());
 }
+#[test]
+fn receiver_remaps_only_the_active_profile_and_can_select_a_profile() {
+    let w = MemoryWire::new();
+    w.0.borrow_mut().receiver = true;
+    let mut b = Board::connect(w.clone(), false).unwrap();
+    let s = b.snapshot().unwrap();
+    let changes = air01::operations::plan_remap(
+        &s,
+        2,
+        air01::device::Layer::Base,
+        42,
+        air01::protocol::Action([0, 0, 4, 0]),
+    )
+    .unwrap();
+    air01::operations::apply(&mut b, &s, &changes, false).unwrap();
+    assert!(!w.0.borrow().writes.is_empty());
+    let s = b.snapshot().unwrap();
+    let changes = air01::operations::plan_remap(
+        &s,
+        1,
+        air01::device::Layer::Base,
+        42,
+        air01::protocol::Action([0, 0, 4, 0]),
+    )
+    .unwrap();
+    let before = w.0.borrow().writes.len();
+    assert!(air01::operations::apply(&mut b, &s, &changes, false).is_err());
+    assert_eq!(w.0.borrow().writes.len(), before);
+    air01::operations::select_profile(&mut b, 3).unwrap();
+    assert_eq!(b.active_profile().unwrap(), 3);
+}

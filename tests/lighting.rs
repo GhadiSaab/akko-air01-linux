@@ -151,3 +151,14 @@ fn firmware_palette_index_overrides_unused_rgb_bytes() {
     };
     assert_eq!(white.color(), [255, 255, 255]);
 }
+#[test]
+fn identified_receiver_allows_verified_lighting() {
+    let w = MemoryWire::new();
+    w.0.borrow_mut().receiver = true;
+    let mut b = Board::connect(w.clone(), false).unwrap();
+    let s = lighting::read(&mut b).unwrap();
+    let d = tempfile::tempdir().unwrap();
+    let target = Lighting::new(1, [255, 105, 180], 4, 2, false).unwrap();
+    lighting::apply_in(&mut b, &s, target, d.path()).unwrap();
+    assert_eq!(lighting::read(&mut b).unwrap().lighting, target);
+}

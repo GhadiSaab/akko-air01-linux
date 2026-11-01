@@ -187,8 +187,8 @@ pub fn draw(f: &mut Frame, s: &UiState) {
     theme::shell(
         f,
         &format!(
-            "active: {} · viewing: {} · USB",
-            s.snapshot.active_profile, s.selected_profile
+            "active: {} · viewing: {} · {}",
+            s.snapshot.active_profile, s.selected_profile, s.link_name
         ),
         "Arrows move · Enter edit · Tab layer",
     );

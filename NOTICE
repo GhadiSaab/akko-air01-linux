@@ -36,3 +36,7 @@ from the vendor class d8 in https://web.akkogear.com/js/b1d82b61.js, with the
 shared serializer in https://web.akkogear.com/js/4abb36b7.js. No vendor source
 is bundled. UI spacing and hierarchy were informed by Apple's public HIG:
 https://developer.apple.com/design/human-interface-guidelines/layout
+
+Receiver relay research: sharkfin app/src-tauri/src/protocol/receiver.rs,
+app/src-tauri/src/wire.rs and docs/PROTOCOL.md at the reference revision above.
+Validated directly on Air01 receiver3151:5006; only device3013 is supported.

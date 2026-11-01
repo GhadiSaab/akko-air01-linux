@@ -123,7 +123,14 @@ pub fn apply<W: Wire>(
     allow_no_fn: bool,
 ) -> Result<usize> {
     s.validate()?;
-    ensure!(b.wired, "configuration writes require a USB cable");
+    ensure!(
+        b.can_configure(),
+        "configuration requires USB or a verified2.4GHz receiver"
+    );
+    ensure!(
+        !b.receiver || changes.iter().all(|c| c.profile == s.active_profile),
+        "over2.4GHz, remap only the active profile; activate another profile first or use USB for all-profile changes"
+    );
     b.check_identity()?;
     ensure!(
         b.active_profile()? == s.active_profile,
@@ -248,7 +255,10 @@ pub fn apply<W: Wire>(
 }
 pub fn select_profile<W: Wire>(b: &mut Board<W>, p: u8) -> Result<()> {
     check_profile(p)?;
-    ensure!(b.wired, "profile writes require a USB cable");
+    ensure!(
+        b.can_configure(),
+        "profile changes require USB or a verified2.4GHz receiver"
+    );
     b.check_identity()?;
     let old = b.active_profile()?;
     if old == p {

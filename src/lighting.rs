@@ -334,7 +334,10 @@ pub fn apply_in<W: Wire>(
 ) -> Result<Option<PathBuf>> {
     expected.validate()?;
     target.validate()?;
-    ensure!(b.wired, "lighting writes require wired USB mode");
+    ensure!(
+        b.can_configure(),
+        "lighting requires USB or a verified2.4GHz receiver"
+    );
     ensure!(
         read(b)? == *expected,
         "lighting or active profile changed externally; reload before applying"

@@ -108,6 +108,7 @@ pub struct LightingUi {
     pub editor: Option<Editor>,
     pub undo: Option<LightingSnapshot>,
     pub animation: AnimationForm,
+    pub can_upload: bool,
 }
 impl LightingUi {
     pub fn new(original: LightingSnapshot, mut presets: Vec<Preset>) -> Self {
@@ -137,6 +138,7 @@ impl LightingUi {
             editor: None,
             undo: None,
             animation: AnimationForm::default(),
+            can_upload: true,
         }
     }
     pub fn active_name(&self) -> &str {
@@ -194,6 +196,7 @@ impl LightingUi {
     }
     pub fn enabled(&self, focus: usize) -> bool {
         match focus {
+            14 => self.can_upload,
             6 => self.draft.mode() != 1,
             9 | 12 => self.dirty(),
             11 => self.undo.is_some(),
@@ -278,11 +281,18 @@ impl LightingUi {
         Intent::None
     }
     pub fn open_animation(&mut self) {
+        if !self.can_upload {
+            return;
+        }
         self.animation.error = None;
         self.editor = Some(Editor::Animation);
     }
     /// Validate the form and request an upload with the draft color.
     pub fn submit_animation(&mut self) -> Intent {
+        if !self.can_upload {
+            self.animation.error = Some("Animation uploads require the USB cable".into());
+            return Intent::None;
+        }
         let m = self.animation.marquee(self.draft.color());
         match animation::marquee(&self.animation.text, m) {
             Ok(_) => Intent::UploadAnimation(self.animation.text.clone(), m),
@@ -388,7 +398,15 @@ impl LightingUi {
             KeyCode::Char('r') => self.restore_draft(self.original.lighting),
             KeyCode::Char('s') => self.editor = Some(Editor::Name(String::new())),
             KeyCode::Char('x') => self.editor = Some(Editor::Hex(self.draft.hex())),
-            KeyCode::Char('m') => self.open_animation(),
+            KeyCode::Char('m') => {
+                if self.can_upload {
+                    self.open_animation()
+                } else {
+                    *status =
+                        "Animation uploads require USB; lighting and remapping work over2.4GHz."
+                            .into();
+                }
+            }
             KeyCode::Char('q') | KeyCode::Esc => return Intent::Quit,
             _ => {}
         }
@@ -624,8 +642,8 @@ pub fn draw(f: &mut Frame, s: &UiState) {
     let a = g.workspace;
     theme::shell(
         f,
-        &s.lighting.as_ref().map_or("USB".to_string(), |l| {
-            format!("USB · Profile {}", l.original.profile)
+        &s.lighting.as_ref().map_or(s.link_name.to_string(), |l| {
+            format!("{} · Profile {}", s.link_name, l.original.profile)
         }),
         "Tab focus · ←→ adjust · Enter choose",
     );

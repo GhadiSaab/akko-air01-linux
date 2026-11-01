@@ -50,6 +50,7 @@ pub struct UiState {
     pub snapshot: Snapshot,
     pub lighting: Option<lighting::LightingUi>,
     pub lighting_workspace: bool,
+    pub link_name: &'static str,
     pub selected_profile: u8,
     pub selected_slot: u8,
     pub layer: Layer,
@@ -61,6 +62,7 @@ impl UiState {
         Self {
             lighting: None,
             lighting_workspace: false,
+            link_name: "USB",
             selected_profile: snapshot.active_profile,
             snapshot,
             selected_slot: 0,
@@ -74,7 +76,9 @@ impl UiState {
         original: crate::lighting::LightingSnapshot,
         presets: Vec<crate::lighting::Preset>,
     ) {
-        self.lighting = Some(lighting::LightingUi::new(original, presets));
+        let mut lighting = lighting::LightingUi::new(original, presets);
+        lighting.can_upload = self.link_name == "USB";
+        self.lighting = Some(lighting);
     }
     pub fn is_lighting(&self) -> bool {
         self.lighting_workspace
@@ -233,6 +237,7 @@ pub fn run<W: Wire>(board: &mut Board<W>) -> Result<()> {
     })?;
     terminal.draw(|f| view::draw_loading(f, 12, "Reading lighting and saved presets"))?;
     let mut ui = UiState::new(snapshot);
+    ui.link_name = board.link_name();
     match crate::lighting::read(board) {
         Ok(l) => match crate::lighting::library_report() {
             Ok(report) => {
@@ -399,6 +404,13 @@ pub fn run<W: Wire>(board: &mut Board<W>) -> Result<()> {
                         )?,
                         _ => unreachable!(),
                     };
+                    anyhow::ensure!(
+                        !board.receiver
+                            || changes
+                                .iter()
+                                .all(|c| c.profile == ui.snapshot.active_profile),
+                        "Over2.4GHz, activate the profile before editing it. Use USB for cross-profile restore/remapping."
+                    );
                     if changes.is_empty() {
                         ui.status = "Already configured; no writes needed.".into();
                     } else {

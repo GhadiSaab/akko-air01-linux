@@ -39,6 +39,7 @@ pub struct Board<W: Wire> {
     pub wire: W,
     pub device_id: u32,
     pub wired: bool,
+    pub receiver: bool,
     pub version: u16,
 }
 impl<W: Wire> Board<W> {
@@ -57,12 +58,26 @@ impl<W: Wire> Board<W> {
             detect_gen2(&options, &keys, &other_sleep),
             "protocol is unknown or ambiguous; writes are disabled"
         );
+        let receiver = wire.is_receiver();
         Ok(Self {
             wire,
             device_id,
             wired,
+            receiver,
             version: u16::from_le_bytes([id[7], id[8]]),
         })
+    }
+    pub fn can_configure(&self) -> bool {
+        self.wired || self.receiver
+    }
+    pub fn link_name(&self) -> &'static str {
+        if self.wired {
+            "USB"
+        } else if self.receiver {
+            "2.4 GHz"
+        } else {
+            "unsupported"
+        }
     }
     pub fn check_identity(&mut self) -> Result<()> {
         let id = self.wire.query(0x8f, &[])?;

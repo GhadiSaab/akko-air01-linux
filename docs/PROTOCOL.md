@@ -91,3 +91,23 @@ for all frames and repeats frames for pauses. The vendor paces pages 5 ms apart;
 air01 uses 10 ms. There is no read command for the frames. Note that
 monsgeek-akko-linux names `0x18` "SET_USERGIFSTART"; for this family the vendor
 code sends `0x12` with byte 3 = 0 instead, and that is what air01 sends.
+
+## Air01 2.4GHz receiver (3151:5006)
+
+Same vendor usageFFFF:2, feature65bytes including reportID0. Status F7, target
+select F6/10, normal keyboard packet, F7 reply-ready poll, FC release/read.
+Status fields:0 reply ready,1 battery percent,3 keyboard online when0,5 can-send,
+6 kind1=keyboard/3=combined. Air01 status tail can retain old bytes (observed
+109 atbyte7); nonzero tail bytes alone do not mean RF boot.
+
+Session selects keyboard once, leaves200ms quiet time between commands, waits
+100ms before checking a keyboard reply and bounds polls. One read retry is
+allowed on missing replies, never an automatic repeat of a configuration write.
+Pending replies are consumed before the next command. No idle polling.
+Worker timeout8seconds poisons further commands, as with USB's3second timeout.
+
+All four base and eight Fn maps read back identically to USB. RGB/brightness,
+base/Windows-Fn/Mac-Fn active-profile writes and profile selection were verified
+and restored. Inactive-profile writes remain prohibited on receiver; animation
+0x12 bulk uploads remain USB-only. Typing latency during configuration traffic
+was observed; it stops when traffic stops. Use USB for large/frequent transfers.

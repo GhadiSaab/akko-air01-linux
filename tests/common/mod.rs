@@ -12,6 +12,7 @@ pub struct State {
     pub snapshot: Snapshot,
     pub device_id: u32,
     pub gen2: bool,
+    pub receiver: bool,
     pub lighting: [u8; 7],
     pub writes: Vec<[u8; 65]>,
     pub fail_at: Option<usize>,
@@ -43,6 +44,7 @@ impl MemoryWire {
             },
             device_id: 3013,
             gen2: true,
+            receiver: false,
             lighting: [1, 4, 4, 8, 255, 0, 89],
             writes: vec![],
             fail_at: None,
@@ -54,6 +56,9 @@ impl MemoryWire {
     }
 }
 impl Wire for MemoryWire {
+    fn is_receiver(&self) -> bool {
+        self.0.borrow().receiver
+    }
     fn query(&mut self, op: u8, args: &[u8]) -> Result<[u8; 64]> {
         let mut s = self.0.borrow_mut();
         if op == 0x8a && s.fail_page_after_write == Some(s.writes.len()) {

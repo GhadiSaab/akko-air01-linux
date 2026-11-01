@@ -12,6 +12,9 @@ use std::{
 };
 
 pub trait Wire {
+    fn is_receiver(&self) -> bool {
+        false
+    }
     fn query(&mut self, op: u8, args: &[u8]) -> Result<[u8; 64]>;
     fn send(&mut self, packet: [u8; 65]) -> Result<()>;
     fn wait(&mut self, duration: Duration) {
@@ -34,6 +37,7 @@ pub struct Device {
     pub pid: u16,
     pub product: String,
     pub wired: bool,
+    pub receiver: bool,
 }
 pub fn devices() -> Result<Vec<Device>> {
     let api = HidApi::new()?;
@@ -46,6 +50,7 @@ pub fn devices() -> Result<Vec<Device>> {
             pid: d.product_id(),
             product: d.product_string().unwrap_or("Akko HID").into(),
             wired: matches!(d.bus_type(), BusType::Usb) && d.product_id() == 0x5002,
+            receiver: matches!(d.bus_type(), BusType::Usb) && d.product_id() == 0x5006,
         })
         .collect())
 }
@@ -66,10 +71,15 @@ struct Request {
 pub struct HidWire {
     sender: Sender<Request>,
     poisoned: bool,
+    receiver: bool,
     _lock: File,
 }
 impl HidWire {
     pub fn open(device: &Device) -> Result<Self> {
+        ensure!(
+            device.wired || device.receiver,
+            "unsupported settings interface; use Air01 USB cable or2.4GHz receiver"
+        );
         let dir = state_dir()?;
         std::fs::create_dir_all(&dir)?;
         let lock = OpenOptions::new()
@@ -85,20 +95,24 @@ impl HidWire {
         let hid = api
             .open_path(&path)
             .context("cannot open settings interface; see the udev instructions")?;
+        let relay = device.receiver;
         let (sender, receiver) = mpsc::channel::<Request>();
         std::thread::Builder::new()
             .name("air01-hid".into())
             .spawn(move || {
+                let mut hid = FeatureHid(hid);
+                let mut relay_state = crate::receiver::Receiver::default();
                 while let Ok(r) = receiver.recv() {
                     let result = (|| -> Result<Vec<u8>> {
-                        hid.send_feature_report(&r.packet)?;
+                        if relay {
+                            return relay_state.exchange(&mut hid, r.packet, r.read);
+                        }
+                        crate::receiver::RawReports::send(&mut hid, &r.packet)?;
                         if !r.read {
                             return Ok(vec![]);
                         }
                         std::thread::sleep(Duration::from_millis(120));
-                        let mut response = [0; 65];
-                        let n = hid.get_feature_report(&mut response)?;
-                        Ok(response[..n].to_vec())
+                        crate::receiver::RawReports::read(&mut hid)
                     })()
                     .map_err(|e| e.to_string());
                     let _ = r.reply.send(result);
@@ -107,6 +121,7 @@ impl HidWire {
         Ok(Self {
             sender,
             poisoned: false,
+            receiver: relay,
             _lock: lock,
         })
     }
@@ -123,7 +138,7 @@ impl HidWire {
                 reply: tx,
             })
             .context("HID worker stopped")?;
-        match rx.recv_timeout(Duration::from_secs(3)) {
+        match rx.recv_timeout(Duration::from_secs(if self.receiver { 8 } else { 3 })) {
             Ok(r) => r.map_err(anyhow::Error::msg),
             Err(e) => {
                 self.poisoned = true;
@@ -135,17 +150,27 @@ impl HidWire {
     }
 }
 impl Wire for HidWire {
+    fn is_receiver(&self) -> bool {
+        self.receiver
+    }
     fn query(&mut self, op: u8, args: &[u8]) -> Result<[u8; 64]> {
         ensure!(
             [0x8f, 0x89, 0x8a, 0x92, 0x84, 0x90, 0x87].contains(&op),
             "unsupported query opcode"
         );
-        decode_report(&self.exchange(packet(op, args, None)?, true)?)
+        let reply = self
+            .exchange(packet(op, args, None)?, true)
+            .with_context(|| format!("query0x{op:02x} args{args:?}"))?;
+        decode_report(&reply)
     }
     fn send(&mut self, p: [u8; 65]) -> Result<()> {
         ensure!(
             p[0] == 0 && [0x0a, 0x10, 0x04, 0x07, 0x12].contains(&p[1]),
             "unsupported write opcode or report ID"
+        );
+        ensure!(
+            !(self.receiver && p[1] == 0x12),
+            "animation uploads require the USB cable"
         );
         ensure!(
             p[1..if p[1] == 7 { 10 } else { 9 }]
@@ -158,5 +183,17 @@ impl Wire for HidWire {
         );
         self.exchange(p, false)?;
         Ok(())
+    }
+}
+
+struct FeatureHid(hidapi::HidDevice);
+impl crate::receiver::RawReports for FeatureHid {
+    fn send(&mut self, p: &[u8; 65]) -> Result<()> {
+        Ok(self.0.send_feature_report(p)?)
+    }
+    fn read(&mut self) -> Result<Vec<u8>> {
+        let mut r = [0; 65];
+        let n = self.0.get_feature_report(&mut r)?;
+        Ok(r[..n].to_vec())
     }
 }

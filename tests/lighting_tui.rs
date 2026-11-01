@@ -479,3 +479,24 @@ fn animation_dialog_mouse_targets_work() {
     click(&mut s, a.cancel.x, a.cancel.y);
     assert!(s.lighting.as_ref().unwrap().editor.is_none());
 }
+#[test]
+fn receiver_header_is_truthful_and_animation_upload_is_unavailable() {
+    let mut s = state();
+    s.link_name = "2.4 GHz";
+    let original = s.lighting.as_ref().unwrap().original.clone();
+    s.set_lighting(original, lighting::presets());
+    press(&mut s, KeyCode::Char('2'));
+    press(&mut s, KeyCode::Char('m'));
+    assert!(s.lighting.as_ref().unwrap().editor.is_none());
+    assert!(!s.lighting.as_ref().unwrap().enabled(14));
+    let mut t = Terminal::new(TestBackend::new(120, 34)).unwrap();
+    t.draw(|f| draw(f, &s)).unwrap();
+    let text = t
+        .backend()
+        .buffer()
+        .content()
+        .iter()
+        .map(|c| c.symbol())
+        .collect::<String>();
+    assert!(text.contains("2.4 GHz"));
+}

@@ -327,11 +327,19 @@ fn open(path: Option<&str>) -> Result<Board<HidWire>> {
     let ds = transport::devices()?;
     let matching = ds
         .iter()
-        .filter(|d| path.map_or(d.wired, |p| d.path == p))
+        .filter(|d| path.map_or(d.wired || d.receiver, |p| d.path == p))
         .collect::<Vec<_>>();
+    // Prefer the cable when this board exposes both paths.
+    let matching = if path.is_none() && matching.iter().any(|d| d.wired) {
+        matching.into_iter().filter(|d| d.wired).collect::<Vec<_>>()
+    } else {
+        matching
+    };
     let d = match matching.as_slice() {
         [d] => *d,
-        [] => bail!("no matching wired Air 01; connect its USB data cable and select wired mode"),
+        [] => bail!(
+            "no Air01 configuration interface; connect its USB data cable or2.4GHz receiver and wake the keyboard"
+        ),
         _ => bail!("multiple boards; use --device /dev/hidrawN from `air01 devices`"),
     };
     Board::connect(HidWire::open(d)?, d.wired)
@@ -393,8 +401,10 @@ fn run(cli: Cli) -> Result<()> {
                 d.product,
                 if d.wired {
                     "wired"
+                } else if d.receiver {
+                    "2.4 GHz receiver"
                 } else {
-                    "read-only / use USB cable"
+                    "unsupported interface"
                 }
             );
         }
@@ -432,8 +442,9 @@ fn run(cli: Cli) -> Result<()> {
         Command::Info => {
             let active = b.active_profile()?;
             println!(
-                "Akko Air 01 | device {} | Gen2 | USB | firmware {:x}.{:02x} | active profile {}",
+                "Akko Air 01 | device {} | Gen2 | {} | firmware {:x}.{:02x} | active profile {}",
                 b.device_id,
+                b.link_name(),
                 b.version >> 8,
                 b.version & 255,
                 active
