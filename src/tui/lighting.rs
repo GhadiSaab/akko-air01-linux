@@ -2,6 +2,7 @@
 use super::theme::{self, ACCENT as MINT, BG, BORDER, DIM, GOLD, KEY, PANEL, SELECTED, TEXT};
 use super::{Intent, UiState};
 use crate::{
+    animation::{self, Direction, Marquee, Style as AnimStyle},
     keyboard,
     lighting::{self, EFFECTS, Lighting, LightingSnapshot, Preset},
 };
@@ -24,6 +25,78 @@ pub const SWATCHES: [[u8; 3]; 8] = [
 pub enum Editor {
     Hex(String),
     Name(String),
+    /// Text animation form; its values live in `LightingUi::animation`.
+    Animation,
+}
+/// Settings for the onboard text animation, kept between openings.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct AnimationForm {
+    pub text: String,
+    pub style: AnimStyle,
+    pub direction: Direction,
+    pub delay_ms: u16,
+    pub hold_ms: u16,
+    /// 0 text, 1 style, 2 direction, 3 step, 4 pause.
+    pub field: usize,
+    pub error: Option<String>,
+}
+impl Default for AnimationForm {
+    fn default() -> Self {
+        Self {
+            text: "CLAUDE".into(),
+            style: AnimStyle::Letters,
+            direction: Direction::Right,
+            delay_ms: 60,
+            hold_ms: 700,
+            field: 0,
+            error: None,
+        }
+    }
+}
+impl AnimationForm {
+    pub const FIELDS: usize = 5;
+    pub fn marquee(&self, color: [u8; 3]) -> Marquee {
+        Marquee {
+            color,
+            direction: self.direction,
+            style: self.style,
+            delay_ms: self.delay_ms,
+            hold_ms: self.hold_ms,
+        }
+    }
+    pub fn enabled(&self, field: usize) -> bool {
+        field != 4 || self.style == AnimStyle::Letters
+    }
+    fn step_field(&mut self, delta: isize) {
+        let mut f = self.field as isize;
+        loop {
+            f = (f + delta).rem_euclid(Self::FIELDS as isize);
+            if self.enabled(f as usize) {
+                break;
+            }
+        }
+        self.field = f as usize;
+    }
+    pub fn adjust(&mut self, delta: i32) {
+        match self.field {
+            1 => {
+                self.style = match self.style {
+                    AnimStyle::Letters => AnimStyle::Scroll,
+                    AnimStyle::Scroll => AnimStyle::Letters,
+                }
+            }
+            2 => {
+                self.direction = match self.direction {
+                    Direction::Right => Direction::Left,
+                    Direction::Left => Direction::Right,
+                }
+            }
+            3 => self.delay_ms = (i32::from(self.delay_ms) + delta * 10).clamp(20, 500) as u16,
+            4 => self.hold_ms = (i32::from(self.hold_ms) + delta * 100).clamp(0, 3000) as u16,
+            _ => {}
+        }
+        self.error = None;
+    }
 }
 pub struct LightingUi {
     pub original: LightingSnapshot,
@@ -34,6 +107,7 @@ pub struct LightingUi {
     pub focus: usize,
     pub editor: Option<Editor>,
     pub undo: Option<LightingSnapshot>,
+    pub animation: AnimationForm,
 }
 impl LightingUi {
     pub fn new(original: LightingSnapshot, mut presets: Vec<Preset>) -> Self {
@@ -62,6 +136,7 @@ impl LightingUi {
             focus: 0,
             editor: None,
             undo: None,
+            animation: AnimationForm::default(),
         }
     }
     pub fn active_name(&self) -> &str {
@@ -127,7 +202,7 @@ impl LightingUi {
         }
     }
     fn move_focus(&mut self, delta: isize) {
-        const ORDER: [usize; 14] = [0, 1, 7, 2, 3, 4, 5, 6, 8, 9, 10, 11, 12, 13];
+        const ORDER: [usize; 15] = [0, 1, 7, 2, 3, 4, 5, 6, 8, 14, 9, 10, 11, 12, 13];
         let mut i = ORDER.iter().position(|f| *f == self.focus).unwrap_or(0) as isize;
         for _ in 0..ORDER.len() {
             i = (i + delta).rem_euclid(ORDER.len() as isize);
@@ -192,6 +267,7 @@ impl LightingUi {
             }
             1..=7 => self.adjust(1),
             8 => self.editor = Some(Editor::Hex(self.draft.hex())),
+            14 => self.open_animation(),
             9 if self.dirty() => return Intent::ApplyLighting,
             10 => self.editor = Some(Editor::Name(String::new())),
             11 if self.undo.is_some() => return Intent::UndoLighting,
@@ -201,10 +277,60 @@ impl LightingUi {
         }
         Intent::None
     }
+    pub fn open_animation(&mut self) {
+        self.animation.error = None;
+        self.editor = Some(Editor::Animation);
+    }
+    /// Validate the form and request an upload with the draft color.
+    pub fn submit_animation(&mut self) -> Intent {
+        let m = self.animation.marquee(self.draft.color());
+        match animation::marquee(&self.animation.text, m) {
+            Ok(_) => Intent::UploadAnimation(self.animation.text.clone(), m),
+            Err(e) => {
+                self.animation.error = Some(format!("{e:#}"));
+                Intent::None
+            }
+        }
+    }
+    fn handle_animation(&mut self, key: KeyEvent) -> Intent {
+        let form = &mut self.animation;
+        match key.code {
+            KeyCode::Esc => self.editor = None,
+            KeyCode::Enter => return self.submit_animation(),
+            KeyCode::Tab | KeyCode::Down => form.step_field(1),
+            KeyCode::BackTab | KeyCode::Up => form.step_field(-1),
+            KeyCode::Left if form.field > 0 => form.adjust(-1),
+            KeyCode::Right if form.field > 0 => form.adjust(1),
+            KeyCode::Char(' ') if (1..=2).contains(&form.field) => form.adjust(1),
+            KeyCode::Backspace if form.field == 0 => {
+                form.text.pop();
+                form.error = None;
+            }
+            KeyCode::Char('u')
+                if form.field == 0 && key.modifiers.contains(KeyModifiers::CONTROL) =>
+            {
+                form.text.clear()
+            }
+            KeyCode::Char(c)
+                if form.field == 0
+                    && !key.modifiers.contains(KeyModifiers::CONTROL)
+                    && form.text.chars().count() < 32 =>
+            {
+                form.text.push(c.to_ascii_uppercase());
+                form.error = None;
+            }
+            _ => {}
+        }
+        Intent::None
+    }
     pub fn handle(&mut self, key: KeyEvent, status: &mut String) -> Intent {
+        if matches!(self.editor, Some(Editor::Animation)) {
+            return self.handle_animation(key);
+        }
         if let Some(mut editor) = self.editor.take() {
             let text = match &mut editor {
                 Editor::Hex(s) | Editor::Name(s) => s,
+                Editor::Animation => unreachable!("handled above"),
             };
             match key.code {
                 KeyCode::Esc => return Intent::None,
@@ -221,6 +347,7 @@ impl LightingUi {
                         self.editor = Some(editor);
                         return Intent::SaveLighting(name);
                     }
+                    Editor::Animation => unreachable!("handled above"),
                 },
                 KeyCode::Backspace => {
                     text.pop();
@@ -261,12 +388,16 @@ impl LightingUi {
             KeyCode::Char('r') => self.restore_draft(self.original.lighting),
             KeyCode::Char('s') => self.editor = Some(Editor::Name(String::new())),
             KeyCode::Char('x') => self.editor = Some(Editor::Hex(self.draft.hex())),
+            KeyCode::Char('m') => self.open_animation(),
             KeyCode::Char('q') | KeyCode::Esc => return Intent::Quit,
             _ => {}
         }
         Intent::None
     }
     pub fn mouse(&mut self, event: MouseEvent, area: Rect, status: &mut String) -> Intent {
+        if matches!(self.editor, Some(Editor::Animation)) {
+            return self.animation_mouse(event, area);
+        }
         if self.editor.is_some() {
             if event.kind == MouseEventKind::Down(MouseButton::Left) {
                 let (apply, cancel) = editor_buttons(area);
@@ -359,6 +490,31 @@ impl LightingUi {
         }
         Intent::None
     }
+    fn animation_mouse(&mut self, event: MouseEvent, area: Rect) -> Intent {
+        if event.kind != MouseEventKind::Down(MouseButton::Left) {
+            return Intent::None;
+        }
+        let g = AnimationLayout::new(area);
+        let pt = Position::new(event.column, event.row);
+        if g.upload.contains(pt) {
+            return self.submit_animation();
+        }
+        if g.cancel.contains(pt) {
+            self.editor = None;
+            return Intent::None;
+        }
+        for (i, r) in g.fields.iter().enumerate() {
+            if r.contains(pt) && self.animation.enabled(i) {
+                self.animation.field = i;
+                if i > 0 && event.column >= g.value_x {
+                    let mid = g.value_x + (r.right() - g.value_x) / 2;
+                    self.animation
+                        .adjust(if event.column < mid { -1 } else { 1 });
+                }
+            }
+        }
+        Intent::None
+    }
     fn preset_start(&self, h: u16) -> usize {
         self.selected.saturating_sub(h.saturating_sub(1) as usize)
     }
@@ -403,7 +559,11 @@ impl LightLayout {
         let mut controls = vec![
             (1, Rect::new(x, y, w / 2, 1)),
             (7, Rect::new(x + w / 2 + 1, y, w - w / 2 - 1, 1)),
-            (8, Rect::new(x + 27, y + 6, w - 27, 1)),
+            (8, Rect::new(x + 27, y + 6, 10, 1)),
+            (
+                14,
+                Rect::new(x + 38, y + 6, w.saturating_sub(38).clamp(1, 14), 1),
+            ),
         ];
         let mut left = a.x + (a.width - 73) / 2;
         for (focus, width) in [(9, 21), (10, 14), (11, 10), (12, 10), (13, 10)] {
@@ -608,6 +768,7 @@ pub fn draw(f: &mut Frame, s: &UiState) {
             1 => effect.as_str(),
             7 => rainbow.as_str(),
             8 => "x Color…",
+            14 => "m Animate…",
             9 => "a Apply to keyboard",
             10 => "s Save preset…",
             11 => "u Undo",
@@ -698,8 +859,10 @@ pub fn draw(f: &mut Frame, s: &UiState) {
         DIM,
         BG,
     );
-    if let Some(e) = &l.editor {
-        draw_editor(f, e)
+    match &l.editor {
+        Some(Editor::Animation) => draw_animation(f, l),
+        Some(e) => draw_editor(f, e),
+        None => {}
     }
     if matches!(s.mode, super::Mode::Help) {
         super::view::draw_help(f);
@@ -728,11 +891,13 @@ fn draw_editor(f: &mut Frame, e: &Editor) {
         match e {
             Editor::Hex(_) => " CUSTOM COLOR ",
             Editor::Name(_) => " SAVE PRESET ",
+            Editor::Animation => " TEXT ANIMATION ",
         },
     );
     let (value, hint) = match e {
         Editor::Hex(s) => (s, "Six hex digits · Ctrl+U clears · Enter previews"),
         Editor::Name(s) => (s, "Name: letters, digits, - or _ · existing names kept"),
+        Editor::Animation => return,
     };
     text(
         f,
@@ -751,4 +916,169 @@ fn draw_editor(f: &mut Frame, e: &Editor) {
     let (apply, cancel) = editor_buttons(f.area());
     control(f, apply, "Enter Continue", true);
     control(f, cancel, "Esc Cancel", false);
+}
+
+/// Text animation dialog geometry; rectangles double as mouse targets.
+pub struct AnimationLayout {
+    pub panel: Rect,
+    pub fields: [Rect; AnimationForm::FIELDS],
+    pub value_x: u16,
+    pub preview: Rect,
+    pub upload: Rect,
+    pub cancel: Rect,
+}
+impl AnimationLayout {
+    pub fn new(area: Rect) -> Self {
+        let a = theme::workspace(area);
+        let w = 66.min(a.width - 4);
+        let h = 20.min(a.height - 2);
+        let panel = Rect::new(a.x + (a.width - w) / 2, a.y + (a.height - h) / 2, w, h);
+        let fields = std::array::from_fn(|i| {
+            Rect::new(panel.x + 3, panel.y + 3 + i as u16, panel.width - 6, 1)
+        });
+        let preview = Rect::new(panel.x + (panel.width - 34) / 2, panel.y + 10, 34, 5);
+        Self {
+            panel,
+            fields,
+            value_x: panel.x + 15,
+            preview,
+            upload: Rect::new(panel.x + 3, panel.bottom() - 2, 20, 1),
+            cancel: Rect::new(panel.x + 25, panel.bottom() - 2, 14, 1),
+        }
+    }
+}
+/// Estimated time for one pass of the loop and for the USB upload.
+fn timings(frames: usize, delay_ms: u16) -> (f32, f32) {
+    let play = frames as f32 * f32::from(delay_ms) / 1000.0;
+    let upload = frames as f32 * f32::from(animation::PAGES) * 0.014 + 1.5;
+    (play, upload)
+}
+fn draw_animation(f: &mut Frame, l: &LightingUi) {
+    let g = AnimationLayout::new(f.area());
+    let p = g.panel;
+    let form = &l.animation;
+    f.render_widget(Clear, p);
+    panel(f, p, " TEXT ANIMATION ");
+    text(
+        f,
+        Rect::new(p.x + 3, p.y + 1, p.width - 6, 1),
+        "Stored and played by the keyboard, like built-in effects",
+        DIM,
+        PANEL,
+    );
+    let values = [
+        format!("{}▏", form.text),
+        format!(
+            "‹ {} ›",
+            match form.style {
+                AnimStyle::Letters => "One letter at a time",
+                AnimStyle::Scroll => "Continuous banner",
+            }
+        ),
+        format!(
+            "‹ {} ›",
+            match form.direction {
+                Direction::Right => "Left → right",
+                Direction::Left => "Right → left",
+            }
+        ),
+        format!("‹ {} ms per step ›", form.delay_ms),
+        if form.enabled(4) {
+            format!("‹ {} ms on each letter ›", form.hold_ms)
+        } else {
+            "— letters style only".into()
+        },
+    ];
+    for (i, (r, label)) in g
+        .fields
+        .iter()
+        .zip(["Text", "Style", "Direction", "Speed", "Pause"])
+        .enumerate()
+    {
+        let focused = form.field == i;
+        let fg = if !form.enabled(i) {
+            DIM
+        } else if focused {
+            MINT
+        } else {
+            TEXT
+        };
+        f.render_widget(
+            Paragraph::new(Line::from(vec![
+                Span::styled(format!("{label:<12}"), Style::default().fg(DIM)),
+                Span::styled(values[i].clone(), Style::default().fg(fg)),
+            ]))
+            .style(Style::default().bg(if focused { SELECTED } else { PANEL })),
+            *r,
+        );
+    }
+    let color = l.draft.color();
+    let [red, green, blue] = color;
+    f.render_widget(
+        Paragraph::new(Line::from(vec![
+            Span::styled(format!("{:<12}", "Color"), Style::default().fg(DIM)),
+            Span::styled("  ", Style::default().bg(Color::Rgb(red, green, blue))),
+            Span::styled(
+                format!(
+                    " {} · brightness {} (studio draft)",
+                    l.draft.hex(),
+                    l.draft.brightness()
+                ),
+                Style::default().fg(TEXT),
+            ),
+        ])),
+        Rect::new(p.x + 3, p.y + 8, p.width - 6, 1),
+    );
+    let result = animation::marquee(&form.text, form.marquee(color));
+    let info = match (&form.error, &result) {
+        (Some(e), _) => (e.clone(), GOLD),
+        (None, Err(e)) => (format!("{e:#}"), GOLD),
+        (None, Ok(a)) => {
+            let (play, upload) = timings(a.frames.len(), a.delay_ms);
+            (
+                format!(
+                    "{} frames · {play:.1} s loop · upload takes about {upload:.0} s",
+                    a.frames.len()
+                ),
+                DIM,
+            )
+        }
+    };
+    if let Ok(a) = &result {
+        let now = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map_or(0, |d| d.as_millis());
+        let frame = &a.frames[(now / u128::from(a.delay_ms)) as usize % a.frames.len()];
+        let lit = Color::Rgb(red, green, blue);
+        for (row, line) in animation::render_ascii(frame).lines().take(5).enumerate() {
+            let spans = line
+                .chars()
+                .map(|c| Span::styled("▆▆", Style::default().fg(if c == '#' { lit } else { KEY })))
+                .collect::<Vec<_>>();
+            f.render_widget(
+                Paragraph::new(Line::from(spans)).style(Style::default().bg(PANEL)),
+                Rect::new(g.preview.x + 1, g.preview.y + row as u16, 32, 1),
+            );
+        }
+    }
+    f.render_widget(
+        Paragraph::new(info.0)
+            .alignment(Alignment::Center)
+            .style(Style::default().fg(info.1).bg(PANEL)),
+        Rect::new(p.x + 2, g.preview.bottom(), p.width - 4, 1),
+    );
+    control(f, g.upload, "Enter Upload", true);
+    control(f, g.cancel, "Esc Cancel", false);
+    text(
+        f,
+        Rect::new(
+            g.cancel.right() + 2,
+            g.cancel.y,
+            p.right().saturating_sub(g.cancel.right() + 4),
+            1,
+        ),
+        "↑↓ field · ←→ change",
+        DIM,
+        PANEL,
+    );
 }

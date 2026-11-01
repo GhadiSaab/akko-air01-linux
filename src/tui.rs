@@ -36,6 +36,8 @@ pub enum Intent {
     UndoLighting,
     ReloadLighting,
     SaveLighting(String),
+    /// Upload the text animation and select light mode 25.
+    UploadAnimation(String, crate::animation::Marquee),
     Quit,
     Swap,
     Backup,
@@ -250,7 +252,14 @@ pub fn run<W: Wire>(board: &mut Board<W>) -> Result<()> {
     let mut pending: Option<Pending> = None;
     loop {
         terminal.draw(|f| draw(f, &ui))?;
-        if !event::poll(Duration::from_millis(200))? {
+        // The animation dialog plays a live preview, so redraw it often.
+        let animating = ui.is_lighting()
+            && ui
+                .lighting
+                .as_ref()
+                .is_some_and(|l| matches!(l.editor, Some(lighting::Editor::Animation)));
+        let tick = if animating { 40 } else { 200 };
+        if !event::poll(Duration::from_millis(tick))? {
             continue;
         }
         let size = terminal.size()?;
@@ -305,6 +314,30 @@ pub fn run<W: Wire>(board: &mut Board<W>) -> Result<()> {
                                 ui.status = format!("{}. Library refresh failed: {e:#}", ui.status);
                                 ui.mode = Mode::Notice(ui.status.clone());
                             }
+                        }
+                    }
+                }
+                Intent::UploadAnimation(text, m) => {
+                    if let Some(l) = &mut ui.lighting {
+                        let anim = crate::animation::marquee(&text, m)?;
+                        let before = l.original.clone();
+                        let target = crate::animation::lighting_for(m.color, l.draft.brightness())?;
+                        l.editor = None;
+                        ui.status = format!(
+                            "Uploading {} frames to the keyboard; keep the cable connected…",
+                            anim.frames.len()
+                        );
+                        terminal.draw(|f| draw(f, &ui))?;
+                        let result = crate::animation::upload(board, &before, &anim, target)
+                            .map(|u| Some(u.backup));
+                        let ok = result.as_ref().ok().cloned().flatten();
+                        let fresh = crate::lighting::read(board);
+                        ui.finish_lighting_apply(before, result, fresh);
+                        if let (Some(backup), Mode::Browse) = (ok, &ui.mode) {
+                            ui.status = format!(
+                                "\"{text}\" is playing on the keyboard. u Undo restores the previous lighting. Backup: {}",
+                                backup.display()
+                            );
                         }
                     }
                 }

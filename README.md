@@ -186,6 +186,13 @@ per-key color arrangement is controlled by firmware.
   **u Undo** restores the previous applied setup, with the same verification.
   **r Revert** discards draft edits. **Reload** refreshes the active profile;
   revert a changed draft first.
+- **m Animate…** opens the text animation dialog (the same feature as
+  `air01 lighting marquee`). Type the text, pick the style (one letter at a time
+  or a continuous banner), direction, step speed and per-letter pause; a live
+  preview plays the frames and shows the frame count and upload time. It uses
+  the draft's color and brightness. **Enter** saves a lighting backup, uploads
+  the frames (about 20 s for CLAUDE) and selects mode 25; **u Undo** returns to
+  the previous lighting. Settings are kept while the TUI is open.
 - **s Save** names a reusable custom preset; it saves the draft without applying
   it. Names allow 1–32 ASCII letters, digits, hyphens and underscores. Existing
   names are never overwritten. Saved presets appear in the library on restart.

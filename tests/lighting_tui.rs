@@ -295,7 +295,7 @@ fn focus_follows_visual_order_and_skips_unavailable_actions() {
     assert_eq!(s.lighting.as_ref().unwrap().focus, 1);
     press(&mut s, KeyCode::Tab);
     assert_eq!(s.lighting.as_ref().unwrap().focus, 7);
-    for focus in [2, 3, 4, 5, 8, 10, 13, 0] {
+    for focus in [2, 3, 4, 5, 8, 14, 10, 13, 0] {
         press(&mut s, KeyCode::Tab);
         assert_eq!(s.lighting.as_ref().unwrap().focus, focus);
     }
@@ -366,4 +366,116 @@ fn clicking_disabled_action_keeps_the_existing_focus() {
         Rect::new(0, 0, 80, 24),
     );
     assert_eq!(s.lighting.as_ref().unwrap().focus, 0);
+}
+
+fn render(s: &UiState, w: u16, h: u16) -> String {
+    let mut t = Terminal::new(TestBackend::new(w, h)).unwrap();
+    t.draw(|f| draw(f, s)).unwrap();
+    let buf = t.backend().buffer().clone();
+    (0..h)
+        .map(|y| {
+            (0..w)
+                .map(|x| buf[(x, y)].symbol().to_string())
+                .collect::<String>()
+                + "\n"
+        })
+        .collect()
+}
+
+#[test]
+fn animation_dialog_configures_and_requests_upload() {
+    use air01::animation::{Direction, Style as AnimStyle};
+    let mut s = state();
+    press(&mut s, KeyCode::Char('2'));
+    for (w, h) in [(80, 24), (120, 34)] {
+        let studio = render(&s, w, h);
+        assert!(
+            studio.contains("x Color…") && studio.contains("m Animate…"),
+            "{studio}"
+        );
+        if std::env::var_os("SHOW_TUI").is_some() {
+            println!("{studio}");
+        }
+    }
+    assert_eq!(press(&mut s, KeyCode::Char('m')), Intent::None);
+    for (w, h) in [(80, 24), (120, 34)] {
+        let text = render(&s, w, h);
+        assert!(text.contains("TEXT ANIMATION"), "{text}");
+        assert!(text.contains("CLAUDE"), "{text}");
+        assert!(text.contains("198 frames"), "{text}");
+        if std::env::var_os("SHOW_TUI").is_some() {
+            println!("{text}");
+        }
+    }
+    // Typing edits the text, even letters that are shortcuts elsewhere.
+    for _ in 0..6 {
+        press(&mut s, KeyCode::Backspace);
+    }
+    for c in "hi am".chars() {
+        press(&mut s, KeyCode::Char(c));
+    }
+    assert!(s.is_lighting());
+    press(&mut s, KeyCode::Down);
+    press(&mut s, KeyCode::Right); // style → scroll
+    press(&mut s, KeyCode::Down);
+    press(&mut s, KeyCode::Right); // direction → left
+    press(&mut s, KeyCode::Down);
+    press(&mut s, KeyCode::Right); // 70 ms
+    press(&mut s, KeyCode::Down); // pause disabled in scroll: wraps to text
+    assert_eq!(s.lighting.as_ref().unwrap().animation.field, 0);
+    let color = s.lighting.as_ref().unwrap().draft.color();
+    match press(&mut s, KeyCode::Enter) {
+        Intent::UploadAnimation(text, m) => {
+            assert_eq!(text, "HI AM");
+            assert_eq!(m.style, AnimStyle::Scroll);
+            assert_eq!(m.direction, Direction::Left);
+            assert_eq!(m.delay_ms, 70);
+            assert_eq!(m.color, color);
+        }
+        other => panic!("{other:?}"),
+    }
+    // Invalid text keeps the dialog open with an explanation.
+    press(&mut s, KeyCode::Char('?'));
+    assert_eq!(press(&mut s, KeyCode::Enter), Intent::None);
+    assert!(render(&s, 80, 24).contains("unsupported marquee character"));
+    press(&mut s, KeyCode::Esc);
+    assert!(s.lighting.as_ref().unwrap().editor.is_none());
+    // Settings are remembered for the next opening.
+    press(&mut s, KeyCode::Char('m'));
+    assert_eq!(s.lighting.as_ref().unwrap().animation.text, "HI AM?");
+}
+
+#[test]
+fn animation_dialog_mouse_targets_work() {
+    let mut s = state();
+    press(&mut s, KeyCode::Char('2'));
+    let area = Rect::new(0, 0, 80, 24);
+    let g = air01::tui::lighting::LightLayout::new(area);
+    let (_, r) = *g.controls.iter().find(|(i, _)| *i == 14).unwrap();
+    let click = |s: &mut UiState, x: u16, y: u16| {
+        s.handle_mouse(
+            MouseEvent {
+                kind: MouseEventKind::Down(MouseButton::Left),
+                column: x,
+                row: y,
+                modifiers: KeyModifiers::NONE,
+            },
+            area,
+        )
+    };
+    click(&mut s, r.x, r.y);
+    assert!(render(&s, 80, 24).contains("TEXT ANIMATION"));
+    let a = air01::tui::lighting::AnimationLayout::new(area);
+    let style = a.fields[1];
+    click(&mut s, style.right() - 1, style.y);
+    assert_eq!(
+        s.lighting.as_ref().unwrap().animation.style,
+        air01::animation::Style::Scroll
+    );
+    assert!(matches!(
+        click(&mut s, a.upload.x, a.upload.y),
+        Intent::UploadAnimation(..)
+    ));
+    click(&mut s, a.cancel.x, a.cancel.y);
+    assert!(s.lighting.as_ref().unwrap().editor.is_none());
 }

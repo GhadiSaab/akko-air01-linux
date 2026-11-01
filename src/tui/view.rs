@@ -509,7 +509,7 @@ pub(super) fn workspace_nav(f: &mut Frame, s: &UiState) {
 }
 pub(super) fn draw_help(f: &mut Frame) {
     let a = theme::workspace(f.area());
-    let p = Rect::new(a.x + (a.width - 74) / 2, a.y + (a.height - 20) / 2, 74, 20);
+    let p = Rect::new(a.x + (a.width - 74) / 2, a.y + (a.height - 21) / 2, 74, 21);
     popup_frame(f, p, " AIR01 · QUICK GUIDE ");
     let help = "WORKSPACES
   1 Keymap   2 Lighting   ? / F1 Help   Ctrl+C Quit
@@ -525,6 +525,7 @@ LIGHTING
   Tab / Shift+Tab focus controls · ←→ adjust · Enter activate
   Click or drag RGB, brightness and speed bars
   x Hex color · Ctrl+U clear · s Save named preset
+  m Text animation stored on the keyboard (e.g. CLAUDE)
   a Apply to active profile · u Undo last change
   r Revert draft · Reload reads the keyboard
 

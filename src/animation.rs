@@ -217,7 +217,7 @@ fn travel(width: i32, direction: Direction) -> Vec<i32> {
     }
 }
 
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct Marquee {
     pub color: [u8; 3],
     pub direction: Direction,
