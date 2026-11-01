@@ -35,9 +35,13 @@ impl Status {
             booting: r[7] == 1 && r[8] == 1,
         })
     }
-    pub fn ensure_keyboard(&self) -> Result<()> {
+    fn ensure_target(&self) -> Result<()> {
         ensure!(self.has_keyboard, "receiver has no paired keyboard");
         ensure!(!self.booting, "receiver is in RF boot mode; reconnect it");
+        Ok(())
+    }
+    pub fn ensure_keyboard(&self) -> Result<()> {
+        self.ensure_target()?;
         ensure!(
             self.online,
             "keyboard is asleep or switched off; press a key and try again"
@@ -59,7 +63,10 @@ fn status<I: RawReports>(io: &mut I) -> Result<Status> {
 struct ReplyTimeout;
 impl std::fmt::Display for ReplyTimeout {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "receiver did not return a keyboard reply")
+        write!(
+            f,
+            "receiver did not return a keyboard reply; wake the keyboard and try again"
+        )
     }
 }
 impl std::error::Error for ReplyTimeout {}
@@ -115,7 +122,13 @@ impl Receiver {
         let mut last = None;
         for _ in 0..20 {
             let s = status(io)?;
-            s.ensure_keyboard()?;
+            // Air01 may transiently report offline during configuration. A bounded
+            // GET can establish reachability; SETs still require online status.
+            if read {
+                s.ensure_target()?
+            } else {
+                s.ensure_keyboard()?
+            }
             last = Some(s);
             // Drain a previous interrupted read before accepting another command.
             if s.reply_ready {
@@ -151,7 +164,7 @@ impl Receiver {
                 decode_report(&r)?;
                 return Ok(r);
             }
-            s.ensure_keyboard()?;
+            s.ensure_target()?;
             io.wait(Duration::from_millis(100));
         }
         Err(ReplyTimeout.into())

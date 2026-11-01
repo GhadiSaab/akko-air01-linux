@@ -85,11 +85,7 @@ fn relay_write_does_not_wait_for_a_nonexistent_reply() {
 }
 #[test]
 fn offline_busy_and_short_status_never_forward_a_keyboard_packet() {
-    for replies in [
-        vec![status(false, false, true)],
-        vec![status(false, true, false); 40],
-        vec![vec![0; 5]],
-    ] {
+    for replies in [vec![status(false, true, false); 40], vec![vec![0; 5]]] {
         let mut f = Fake {
             reads: replies.into(),
             sent: vec![],
@@ -224,4 +220,30 @@ fn a_ready_reply_is_consumed_even_if_the_keyboard_just_went_idle() {
     };
     assert!(receiver::exchange(&mut f, packet(0x8a, &[0, 255, 0, 0], None).unwrap(), true).is_ok());
     assert_eq!(f.sent.last().unwrap()[1], 0xfc);
+}
+#[test]
+fn readonly_probe_can_recover_from_a_transient_offline_status() {
+    let mut f = Fake {
+        reads: [
+            status(false, false, true),
+            status(true, true, true),
+            vec![0; 65],
+        ]
+        .into(),
+        sent: vec![],
+        waits: vec![],
+        since_send: Duration::ZERO,
+    };
+    assert!(receiver::exchange(&mut f, packet(0x8f, &[], None).unwrap(), true).is_ok());
+}
+#[test]
+fn offline_status_still_prevents_configuration_writes() {
+    let mut f = Fake {
+        reads: [status(false, false, true)].into(),
+        sent: vec![],
+        waits: vec![],
+        since_send: Duration::ZERO,
+    };
+    assert!(receiver::exchange(&mut f, packet(4, &[1], None).unwrap(), false).is_err());
+    assert!(f.sent.iter().all(|p| p[1] == 0xf7));
 }

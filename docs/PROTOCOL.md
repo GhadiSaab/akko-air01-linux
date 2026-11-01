@@ -112,3 +112,8 @@ base/Windows-Fn/Mac-Fn active-profile writes and profile selection were verified
 and restored. Inactive-profile writes remain prohibited on receiver; animation
 0x12 bulk uploads remain USB-only. Typing latency during configuration traffic
 was observed; it stops when traffic stops. Use USB for large/frequent transfers.
+
+Air01 can transiently assert its offline bit during a read sequence. Read-only
+queries may probe for a valid keyboard reply despite that bit; writes still require
+online status. A queued ready response is consumed before treating a later idle
+flag as an error. Actual device identity/protocol and readback remain mandatory.
