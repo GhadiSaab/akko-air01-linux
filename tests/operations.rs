@@ -242,3 +242,23 @@ fn receiver_remaps_only_the_active_profile_and_can_select_a_profile() {
     air01::operations::select_profile(&mut b, 3).unwrap();
     assert_eq!(b.active_profile().unwrap(), 3);
 }
+
+#[test]
+fn receiver_rollback_never_writes_a_profile_that_became_inactive() {
+    let w = MemoryWire::new();
+    w.0.borrow_mut().receiver = true;
+    let mut b = Board::connect(w.clone(), false).unwrap();
+    let s = b.snapshot().unwrap();
+    let changes = air01::operations::plan_remap(
+        &s,
+        2,
+        air01::device::Layer::Base,
+        42,
+        air01::protocol::Action([0, 0, 4, 0]),
+    )
+    .unwrap();
+    w.0.borrow_mut().switch_after_write = Some((1, 0));
+    let error = air01::operations::apply(&mut b, &s, &changes, false).unwrap_err();
+    assert!(format!("{error:#}").contains("INCOMPLETE"));
+    assert_eq!(w.0.borrow().writes.len(), 1);
+}

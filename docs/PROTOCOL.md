@@ -1,6 +1,7 @@
 # Air 01 protocol evidence
 
-Only wired USB device 3013 (`3151:5002`) is enabled for configuration writes.
+Device3013 is enabled through USB `3151:5002` and the verified2.4GHz receiver
+`3151:5006`; receiver remaps target only its active profile.
 The USB product and internal `yc3123` name are insufficient to select commands.
 
 The test board answered `0x89` with an opcode echo/options and `0x8A` with a
@@ -15,7 +16,7 @@ Anything ambiguous is rejected before writes. Identification bytes 7/8 were
 | base map page | `8A profile FF page 00 …` | Air 01 hardware |
 | Fn map page | `90 os profile FF page …` | Air 01 hardware read |
 | base slot write | `0A profile slot 00 00 01 00 checksum` + value at 8..12 | Air 01 hardware, profiles 1/2 slots 5/11 |
-| Fn slot write | `10 os profile slot …` + value at 8..12 | Gen2 firmware research; not yet Air 01 hardware |
+| Fn slot write | `10 os profile slot …` + value at 8..12 | Air01 receiver hardware: Windows and Mac Fn slots, restored afterward |
 | select profile | `04 profile …` | Air 01 hardware: 2 → 3 → 2 |
 
 Every feature buffer is 65 bytes: report ID 0 plus a 64-byte packet. Header
@@ -104,7 +105,7 @@ Session selects keyboard once, leaves200ms quiet time between commands, waits
 100ms before checking a keyboard reply and bounds polls. One read retry is
 allowed on missing replies, never an automatic repeat of a configuration write.
 Pending replies are consumed before the next command. No idle polling.
-Worker timeout8seconds poisons further commands, as with USB's3second timeout.
+Worker timeout15seconds poisons further commands, as with USB's3second timeout.
 
 All four base and eight Fn maps read back identically to USB. RGB/brightness,
 base/Windows-Fn/Mac-Fn active-profile writes and profile selection were verified

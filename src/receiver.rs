@@ -52,6 +52,7 @@ fn send<I: RawReports>(io: &mut I, p: &[u8; 65]) -> Result<()> {
 }
 fn status<I: RawReports>(io: &mut I) -> Result<Status> {
     send(io, &packet(0xf7, &[], None)?)?;
+    io.wait(Duration::from_millis(80));
     Status::parse(&io.read()?)
 }
 #[derive(Debug)]
@@ -62,6 +63,18 @@ impl std::fmt::Display for ReplyTimeout {
     }
 }
 impl std::error::Error for ReplyTimeout {}
+#[derive(Debug)]
+struct ReceiverBusy(Option<Status>);
+impl std::fmt::Display for ReceiverBusy {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(
+            f,
+            "receiver remained busy; no keyboard command sent (last status: {:?})",
+            self.0
+        )
+    }
+}
+impl std::error::Error for ReceiverBusy {}
 /// One relay session. No idle polling, and no duplicate selects on each query.
 #[derive(Default)]
 pub struct Receiver {
@@ -78,9 +91,10 @@ impl Receiver {
         io.wait(Duration::from_millis(200));
         let mut result = self.exchange_inner(io, p, read);
         if read
-            && result
-                .as_ref()
-                .is_err_and(|e| e.downcast_ref::<ReplyTimeout>().is_some())
+            && result.as_ref().is_err_and(|e| {
+                e.downcast_ref::<ReplyTimeout>().is_some()
+                    || e.downcast_ref::<ReceiverBusy>().is_some()
+            })
         {
             self.selected = false;
             io.wait(Duration::from_millis(250));
@@ -99,13 +113,14 @@ impl Receiver {
     ) -> Result<Vec<u8>> {
         let mut ready = false;
         let mut last = None;
-        for _ in 0..10 {
+        for _ in 0..20 {
             let s = status(io)?;
             s.ensure_keyboard()?;
             last = Some(s);
             // Drain a previous interrupted read before accepting another command.
             if s.reply_ready {
                 send(io, &packet(0xfc, &[], None)?)?;
+                io.wait(Duration::from_millis(80));
                 decode_report(&io.read()?)?;
             }
             if s.can_send {
@@ -114,10 +129,9 @@ impl Receiver {
             }
             io.wait(Duration::from_millis(100));
         }
-        ensure!(
-            ready,
-            "receiver remained busy; no keyboard command sent (last status: {last:?})"
-        );
+        if !ready {
+            return Err(ReceiverBusy(last).into());
+        }
         if !self.selected {
             send(io, &packet(0xf6, &[10], None)?)?;
             self.selected = true;
@@ -130,13 +144,14 @@ impl Receiver {
         io.wait(Duration::from_millis(100));
         for _ in 0..10 {
             let s = status(io)?;
-            s.ensure_keyboard()?;
             if s.reply_ready {
                 send(io, &packet(0xfc, &[], None)?)?;
+                io.wait(Duration::from_millis(80));
                 let r = io.read()?;
                 decode_report(&r)?;
                 return Ok(r);
             }
+            s.ensure_keyboard()?;
             io.wait(Duration::from_millis(100));
         }
         Err(ReplyTimeout.into())

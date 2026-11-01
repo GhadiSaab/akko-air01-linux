@@ -138,7 +138,7 @@ impl HidWire {
                 reply: tx,
             })
             .context("HID worker stopped")?;
-        match rx.recv_timeout(Duration::from_secs(if self.receiver { 8 } else { 3 })) {
+        match rx.recv_timeout(Duration::from_secs(if self.receiver { 15 } else { 3 })) {
             Ok(r) => r.map_err(anyhow::Error::msg),
             Err(e) => {
                 self.poisoned = true;

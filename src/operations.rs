@@ -103,6 +103,10 @@ fn read_entry<W: Wire>(b: &mut Board<W>, c: &Change) -> Result<Action> {
     Ok(Action(r[at..at + 4].try_into()?))
 }
 fn write_verify<W: Wire>(b: &mut Board<W>, c: &Change, value: Action) -> Result<()> {
+    ensure!(
+        !b.receiver || b.active_profile()? == c.profile,
+        "receiver target profile is no longer active; recovery/write stopped"
+    );
     let result = b.wire.send(change_packet(c, value)?);
     // A send error may still have reached the device; allow the flash endpoint to settle.
     b.wire.wait(Duration::from_millis(500));

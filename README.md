@@ -78,7 +78,7 @@ this application requires an already paired, awake keyboard.
 briefly increase typing latency. The transport leaves quiet radio time between
 commands, bounds read retries and never blindly resends writes. Once the TUI is
 idle, browsing/editing a draft or closed, it sends **no background HID traffic**.
-A full wireless read takes tens of seconds; use the cable for frequent or bulk
+A full wireless read can take a minute or longer; use the cable for frequent or bulk
 configuration. These limits were measured on this Air 01, not inferred from another
 model.
 
@@ -141,7 +141,7 @@ verified, close the application, reconnect the cable, inspect the profile, and
 restore the printed backup. No write is blindly retried.
 
 The transport returns an error after three seconds without a worker reply on USB
-(or eight seconds on the receiver) and refuses further commands. Linux HID feature ioctls cannot be cancelled through
+(or fifteen seconds on the receiver) and refuses further commands. Linux HID feature ioctls cannot be cancelled through
 hidapi, so a timed-out write has an unknown outcome; air01 does not claim it was
 rolled back. Reconnect before continuing. Do not run another configurator
 against a timed-out device while this process is still exiting.

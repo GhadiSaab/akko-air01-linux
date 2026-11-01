@@ -8,17 +8,24 @@ struct Fake {
     reads: VecDeque<Vec<u8>>,
     sent: Vec<[u8; 65]>,
     waits: Vec<Duration>,
+    since_send: Duration,
 }
 impl RawReports for Fake {
     fn send(&mut self, p: &[u8; 65]) -> Result<()> {
         self.sent.push(*p);
+        self.since_send = Duration::ZERO;
         Ok(())
     }
     fn read(&mut self) -> Result<Vec<u8>> {
+        assert!(
+            self.since_send >= Duration::from_millis(100),
+            "GET feature report before receiver control reply settled"
+        );
         Ok(self.reads.pop_front().expect("unexpected read"))
     }
     fn wait(&mut self, d: Duration) {
         self.waits.push(d);
+        self.since_send += d;
     }
 }
 fn status(ready: bool, online: bool, send: bool) -> Vec<u8> {
@@ -45,6 +52,7 @@ fn relay_selects_keyboard_once_and_releases_a_query_reply() {
         .into(),
         sent: vec![],
         waits: vec![],
+        since_send: Duration::ZERO,
     };
     assert_eq!(
         receiver::exchange(&mut f, packet(0x8f, &[], None).unwrap(), true).unwrap(),
@@ -63,6 +71,7 @@ fn relay_write_does_not_wait_for_a_nonexistent_reply() {
         reads: [status(false, true, true)].into(),
         sent: vec![],
         waits: vec![],
+        since_send: Duration::ZERO,
     };
     assert!(
         receiver::exchange(&mut f, packet(4, &[1], None).unwrap(), false)
@@ -78,13 +87,14 @@ fn relay_write_does_not_wait_for_a_nonexistent_reply() {
 fn offline_busy_and_short_status_never_forward_a_keyboard_packet() {
     for replies in [
         vec![status(false, false, true)],
-        vec![status(false, true, false); 10],
+        vec![status(false, true, false); 40],
         vec![vec![0; 5]],
     ] {
         let mut f = Fake {
             reads: replies.into(),
             sent: vec![],
             waits: vec![],
+            since_send: Duration::ZERO,
         };
         assert!(receiver::exchange(&mut f, packet(0x8f, &[], None).unwrap(), true).is_err());
         assert!(f.sent.iter().all(|p| p[1] == 0xf7));
@@ -100,6 +110,7 @@ fn missing_reply_has_only_one_bounded_read_retry() {
         reads: replies.into(),
         sent: vec![],
         waits: vec![],
+        since_send: Duration::ZERO,
     };
     assert!(receiver::exchange(&mut f, packet(0x87, &[], None).unwrap(), true).is_err());
     assert_eq!(f.sent.iter().filter(|p| p[1] == 0x87).count(), 2);
@@ -127,6 +138,7 @@ fn session_selects_target_once_and_keeps_quiet_gaps() {
         reads: [status(false, true, true), status(false, true, true)].into(),
         sent: vec![],
         waits: vec![],
+        since_send: Duration::ZERO,
     };
     let mut session = receiver::Receiver::default();
     session
@@ -151,6 +163,7 @@ fn queued_reply_is_drained_before_a_new_command() {
         reads: [status(true, true, true), vec![0; 65]].into(),
         sent: vec![],
         waits: vec![],
+        since_send: Duration::ZERO,
     };
     receiver::exchange(&mut f, packet(4, &[1], None).unwrap(), false).unwrap();
     assert_eq!(
@@ -172,10 +185,43 @@ fn dropped_read_can_recover_without_repeating_writes() {
         reads: replies.into(),
         sent: vec![],
         waits: vec![],
+        since_send: Duration::ZERO,
     };
     assert_eq!(
         receiver::exchange(&mut f, packet(0x87, &[], None).unwrap(), true).unwrap(),
         answer
     );
     assert_eq!(f.sent.iter().filter(|p| p[1] == 0x87).count(), 2);
+}
+
+#[test]
+fn busy_read_yields_then_can_recover_without_duplicate_keyboard_commands() {
+    let mut replies = vec![status(false, true, false); 20];
+    replies.push(status(false, true, true));
+    replies.push(status(true, true, true));
+    replies.push(vec![0; 65]);
+    let mut f = Fake {
+        reads: replies.into(),
+        sent: vec![],
+        waits: vec![],
+        since_send: Duration::ZERO,
+    };
+    receiver::exchange(&mut f, packet(0x8a, &[0, 255, 0, 0], None).unwrap(), true).unwrap();
+    assert_eq!(f.sent.iter().filter(|p| p[1] == 0x8a).count(), 1);
+}
+#[test]
+fn a_ready_reply_is_consumed_even_if_the_keyboard_just_went_idle() {
+    let mut f = Fake {
+        reads: [
+            status(false, true, true),
+            status(true, false, true),
+            vec![0; 65],
+        ]
+        .into(),
+        sent: vec![],
+        waits: vec![],
+        since_send: Duration::ZERO,
+    };
+    assert!(receiver::exchange(&mut f, packet(0x8a, &[0, 255, 0, 0], None).unwrap(), true).is_ok());
+    assert_eq!(f.sent.last().unwrap()[1], 0xfc);
 }

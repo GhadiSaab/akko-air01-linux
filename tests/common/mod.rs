@@ -20,6 +20,7 @@ pub struct State {
     pub fail_page_after_write: Option<usize>,
     pub ignore_at: Option<usize>,
     pub always_ignore: bool,
+    pub switch_after_write: Option<(usize, u8)>,
 }
 impl MemoryWire {
     pub fn new() -> Self {
@@ -52,6 +53,7 @@ impl MemoryWire {
             fail_page_after_write: None,
             ignore_at: None,
             always_ignore: false,
+            switch_after_write: None,
         })))
     }
 }
@@ -140,6 +142,11 @@ impl Wire for MemoryWire {
             0x04 => s.snapshot.active_profile = p[2],
             0x12 => {}
             _ => bail!("unexpected fake write {:x}", p[1]),
+        }
+        if let Some((at, profile)) = s.switch_after_write
+            && n == at
+        {
+            s.snapshot.active_profile = profile;
         }
         Ok(())
     }

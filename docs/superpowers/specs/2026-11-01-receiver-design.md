@@ -5,8 +5,8 @@ Actual receiver3151:5006 exposes usageFFFF:2. Read-only probe reaches device3013
 Gen2 firmware1.10, active profile1, fixed pink RGB and keymap/settings via relay.
 
 Implement relay conversation F7 status, F6 keyboard target10, normal packet,
-F7 reply-ready polls, FC release, read. Per-packet pacing20ms, bounded polls;
-worker timeout5s on receiver and poison after timeout. Reject absent/unpaired/
+F7 reply-ready polls, FC release, read. Writes paced20ms, control replies given100ms to settle,200ms quiet time
+between commands, bounded polling and one read-only retry; worker timeout15s on receiver and poison after timeout. Reject absent/unpaired/
 asleep/boot receiver before keyboard packets. Do not blindly resend writes.
 Only known USB3151:5002 wired or5006 receiver may open. Board identification and
 Gen2 probing remain mandatory. Ordinary profile/lighting/keymap operations share
