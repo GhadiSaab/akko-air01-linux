@@ -92,7 +92,9 @@ pub fn packet(op: u8, args: &[u8], data: Option<Action>) -> Result<[u8; 65]> {
 }
 pub fn detect_gen2(options: &[u8; 64], keys: &[u8; 64], other_sleep: &[u8; 64]) -> bool {
     let plain = |p: &[u8; 64]| {
-        p.chunks_exact(4)
+        p.as_chunks::<4>()
+            .0
+            .iter()
             .filter(|k| k[0] == 0 && k[1] == 0 && (4..=231).contains(&k[2]) && k[3] == 0)
             .count()
     };

@@ -106,10 +106,7 @@ impl<W: Wire> Board<W> {
         let mut out = Vec::with_capacity(128);
         for page in 0..8 {
             let r = self.page(profile, layer, page)?;
-            out.extend(
-                r.chunks_exact(4)
-                    .map(|v| Action(v.try_into().expect("four-byte chunk"))),
-            );
+            out.extend(r.as_chunks::<4>().0.iter().copied().map(Action));
         }
         Ok(out)
     }
